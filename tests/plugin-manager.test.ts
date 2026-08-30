@@ -96,6 +96,29 @@ describe("PluginManager exclusive groups", () => {
     }
   });
 
+  it("marks only one group member active when both are activeByDefault", () => {
+    const manager = new PluginManager();
+    const warnings: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+    try {
+      manager.register(
+        testPlugin({ id: "stac", exclusiveGroup: "stac-browser", activeByDefault: true }),
+      );
+      manager.register(
+        testPlugin({ id: "planet", exclusiveGroup: "stac-browser", activeByDefault: true }),
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.equal(manager.isActive("stac"), false);
+    assert.equal(manager.isActive("planet"), true);
+    assert.equal(warnings.length, 1);
+  });
+
   it("keeps only the last requested group member active during project restore", () => {
     const manager = new PluginManager();
     const activations: string[] = [];

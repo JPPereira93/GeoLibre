@@ -45,6 +45,20 @@ export class PluginManager {
     // layer control is added by MapController.init regardless of plugin state).
     if (plugin.activeByDefault) {
       this.defaultActive.add(plugin.id);
+      // Two members of one exclusive group both marked activeByDefault is a
+      // registration error: there is no app API here, so the earlier one cannot
+      // be torn down properly. Drop its active mark anyway so `active` never
+      // holds two members of a group, which is the invariant plugins sharing
+      // module-level state (e.g. maplibre-stac.ts) rely on. Last registration
+      // wins, matching how restoreProjectState normalizes `defaultActive`.
+      for (const siblingId of this.activeExclusiveSiblings(plugin.id, plugin)) {
+        console.warn(
+          `Plugins '${siblingId}' and '${plugin.id}' share exclusive group ` +
+            `'${plugin.exclusiveGroup}' and are both activeByDefault; ` +
+            `'${siblingId}' will not start active.`,
+        );
+        this.active.delete(siblingId);
+      }
       this.active.add(plugin.id);
     } else {
       this.defaultActive.delete(plugin.id);
@@ -287,24 +301,30 @@ export class PluginManager {
     this.notify();
   }
 
-  /** Deactivate and return active siblings that conflict with `plugin`. */
-  private deactivateExclusiveSiblings(
-    id: string,
-    plugin: GeoLibrePlugin,
-    app: GeoLibreAppAPI,
-  ): string[] {
+  /** Active plugins other than `id` that share `plugin`'s exclusive group. */
+  private activeExclusiveSiblings(id: string, plugin: GeoLibrePlugin): string[] {
     if (!plugin.exclusiveGroup) return [];
-    const displaced: string[] = [];
+    const siblings: string[] = [];
     for (const [otherId, otherPlugin] of this.plugins) {
       if (
         otherId !== id &&
         this.active.has(otherId) &&
         otherPlugin.exclusiveGroup === plugin.exclusiveGroup
       ) {
-        displaced.push(otherId);
-        this.deactivate(otherId, app);
+        siblings.push(otherId);
       }
     }
+    return siblings;
+  }
+
+  /** Deactivate and return active siblings that conflict with `plugin`. */
+  private deactivateExclusiveSiblings(
+    id: string,
+    plugin: GeoLibrePlugin,
+    app: GeoLibreAppAPI,
+  ): string[] {
+    const displaced = this.activeExclusiveSiblings(id, plugin);
+    for (const otherId of displaced) this.deactivate(otherId, app);
     return displaced;
   }
 
