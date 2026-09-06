@@ -65,10 +65,15 @@ export interface CatalogTree {
   reset: (nodes: StacCatalogNode[]) => void;
   /** Documents of the collections the user has picked, as search entry points. */
   selection: () => string[];
+  /** Reveal and select a known path without triggering a catalog search. */
+  selectPath: (hrefs: string[], signal?: AbortSignal) => Promise<boolean>;
 }
 
 /** One row of the tree, and the branch hanging off it. */
 interface Row {
+  href: string;
+  reveal: () => Promise<void>;
+  expand: () => void;
   element: HTMLButtonElement;
   box: HTMLDivElement;
   parent?: Row;
@@ -176,7 +181,10 @@ export function buildCatalogTree(options: CatalogTreeOptions): CatalogTree {
     row.setAttribute("aria-owns", childrenBox.id);
     (parent?.box ?? element).append(row, childrenBox);
 
-    const self: Row = { element: row, box: childrenBox, parent, children: [], open: false };
+    const self: Row = {
+      href: node.href, reveal: () => reveal(false, false), expand: () => expand(true),
+      element: row, box: childrenBox, parent, children: [], open: false,
+    };
     (parent?.children ?? roots).push(self);
 
     let kind = node.kind;
@@ -263,6 +271,7 @@ export function buildCatalogTree(options: CatalogTreeOptions): CatalogTree {
     };
 
     row.addEventListener("click", (event) => {
+      asking.abort();
       focusRow(self);
       activate(event.ctrlKey || event.metaKey);
     });
@@ -291,6 +300,7 @@ export function buildCatalogTree(options: CatalogTreeOptions): CatalogTree {
     // The arrows walk the tree and work its folders. Enter and Space are left to the button the
     // row is written on, which already chooses; asking for the items takes the modifier.
     row.addEventListener("keydown", (event) => {
+      asking.abort();
       const step = (by: number): void => {
         const list = reachable();
         focusRow(list[list.indexOf(self) + by]);
@@ -340,5 +350,29 @@ export function buildCatalogTree(options: CatalogTreeOptions): CatalogTree {
       for (const node of nodes) addNode(node, undefined, 0);
     },
     selection: () => [...new Set(selected.values())],
+    async selectPath(hrefs, signal) {
+      asking.abort();
+      asking = new AbortController();
+      const scope = AbortSignal.any([reads(session.signal), asking.signal, ...(signal ? [signal] : [])]);
+      let candidates = roots;
+      for (let i = 0; i < hrefs.length; i++) {
+        if (scope.aborted) return false;
+        const row = candidates.find((candidate) => candidate.href === hrefs[i]);
+        if (!row) return false;
+        if (i < hrefs.length - 1) {
+          await row.reveal();
+          if (scope.aborted) return false;
+          row.expand();
+          candidates = row.children;
+        } else {
+          for (const [other] of selected) mark(other, false);
+          selected.clear();
+          select(row.href, row.element, false);
+          row.element.scrollIntoView?.({ block: "nearest" });
+          return true;
+        }
+      }
+      return false;
+    },
   };
 }

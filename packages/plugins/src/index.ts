@@ -526,6 +526,9 @@ export {
 } from "./plugins/openaerialmap-api";
 export {
   maplibrePlanetOpenDataPlugin,
+  maplibreIceyeOpenDataPlugin,
+  ICEYE_OPEN_DATA_PLUGIN_ID,
+  ICEYE_OPEN_DATA_CATALOG_URL,
   maplibreStacCatalogsPlugin,
   PLANET_DISASTER_DATA_CATALOG_URL,
   PLANET_OPEN_DATA_PLUGIN_ID,

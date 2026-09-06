@@ -18,6 +18,7 @@ import {
   horizontalBbox,
   icechunkBranch,
   isIcechunkAsset,
+  isIceyeRasterAsset,
   isVisualizableAsset,
   requiresTarget,
   itemBbox,
@@ -25,6 +26,7 @@ import {
   openCatalogNode,
   searchStacApi,
   searchStaticStac,
+  stacGeoJsonFeatureCollection,
   type StacAsset,
   type StacConnection,
   type StacIndexCatalog,
@@ -42,6 +44,8 @@ import {
   zarrStoreTakesKeys,
 } from "./stac-api";
 import { buildCatalogTree } from "./stac-catalog-tree";
+import { buildIceyeModeGuide } from "./iceye-mode-guide";
+import { iceyeFootprintReference, iceyeItemMode, isIceyeFootprintSource, loadIceyeFootprintItem } from "./iceye-footprints";
 import { el, setDisabled } from "../panel-dom";
 import { addVectorLayersFromUrl } from "./maplibre-vector";
 import { addZarrRasterLayer } from "./maplibre-components";
@@ -61,6 +65,9 @@ import {
 
 export const STAC_PLUGIN_ID = "geolibre-stac-catalogs";
 export const PLANET_OPEN_DATA_PLUGIN_ID = "geolibre-planet-open-data";
+export const ICEYE_OPEN_DATA_PLUGIN_ID = "geolibre-iceye-open-data";
+export const ICEYE_OPEN_DATA_CATALOG_URL =
+  "https://iceye-open-data-catalog.s3-us-west-2.amazonaws.com/catalog.json";
 export const PLANET_DISASTER_DATA_CATALOG_URL =
   "https://data.source.coop/planet/disasterdata/catalog.json";
 // The footprints layer is a normal store layer, so it is saved into the project
@@ -149,6 +156,8 @@ export interface StacLabels {
   planetTitle: string;
   /** Planet title getter pushed by the host so the preset panel re-localizes live. */
   getPlanetTitle?: () => string;
+  iceyeTitle: string;
+  getIceyeTitle?: () => string;
   footprintLayerName: string;
   catalogSearch: string;
   catalogSearchPlaceholder: string;
@@ -248,6 +257,7 @@ const ZARR_PROBLEMS: Record<Exclude<ZarrTargetCheck, "array">, string> = {
 let labels: StacLabels = {
   title: "STAC Catalogs",
   planetTitle: "Planet Open Data",
+  iceyeTitle: "ICEYE Open Data",
   footprintLayerName: "STAC search footprints",
   catalogSearch: "Find a public catalog from STAC Index",
   catalogSearchPlaceholder: "Search catalog names…",
@@ -766,7 +776,7 @@ async function visualizeAsset(
         signal,
       });
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-      const data = (await response.json()) as FeatureCollection;
+      const data = stacGeoJsonFeatureCollection(await response.json());
       appRef.addGeoJsonLayer(name, data, asset.href);
       return;
     }
@@ -839,7 +849,12 @@ async function visualizeAsset(
       if (!appRef?.addCogLayer) throw new Error(labels.cogUnsupported);
       const access = assetAccess(connection, item, asset.href);
       const href = await readableStacAssetHref(access, asset.href, signal);
-      const layerId = await appRef.addCogLayer(name, href, cogOptions);
+      const gcpOverview = isIceyeRasterAsset(asset);
+      const layerId = await appRef.addCogLayer(
+        gcpOverview ? `${name} (display overview)` : name,
+        href,
+        { ...cogOptions, ...(gcpOverview ? { gcpOverview: true, signal } : {}) },
+      );
       rememberAssetAccess(layerId, access);
       return;
     }
@@ -864,6 +879,8 @@ function buildPanel(container: HTMLElement): () => void {
   container.innerHTML = "";
   container.style.cssText = style.panel;
   const controller = new AbortController();
+  const lockedCatalogUrl =
+    initialCatalogUrl === ICEYE_OPEN_DATA_CATALOG_URL ? initialCatalogUrl : null;
 
   const catalogSection = el("div");
   catalogSection.style.cssText = style.section;
@@ -877,6 +894,19 @@ function buildPanel(container: HTMLElement): () => void {
   const urlField = field(labels.urlLabel, "url");
   urlField.input.placeholder = "https://example.org/stac/";
   urlField.input.value = initialCatalogUrl;
+  if (lockedCatalogUrl) {
+    catalogSearch.wrap.hidden = true;
+    firstOption.textContent = labels.iceyeTitle;
+    firstOption.value = lockedCatalogUrl;
+    catalogSelect.value = lockedCatalogUrl;
+    catalogSelect.setAttribute("aria-label", labels.iceyeTitle);
+    for (const control of [catalogSelect, urlField.input]) {
+      control.disabled = true;
+      control.style.opacity = "0.6";
+      control.style.color = "hsl(var(--muted-foreground))";
+      control.style.cursor = "not-allowed";
+    }
+  }
   let presetSelectionPending = Boolean(initialCatalogUrl);
   const connectButton = el("button", labels.connect);
   connectButton.type = "button";
@@ -956,6 +986,11 @@ function buildPanel(container: HTMLElement): () => void {
     additionalWrap,
     searchActions,
   );
+  if (lockedCatalogUrl) {
+    const hint = el("div", "After adding the collection footprints, click a footprint on the map to open its scene and acquisition mode.");
+    hint.style.cssText = style.status;
+    catalogInfo.after(buildIceyeModeGuide(), hint);
+  }
 
   // Raster rendering options, applied to every GeoTIFF/COG asset added from the
   // result list. Collapsed by default so the common case stays a single click.
@@ -1186,6 +1221,7 @@ function buildPanel(container: HTMLElement): () => void {
   };
 
   const renderCatalogs = (): void => {
+    if (lockedCatalogUrl) return;
     const query = catalogSearch.input.value.trim().toLowerCase();
     filtered = index
       .filter((entry) => !query || `${entry.title} ${entry.summary}`.toLowerCase().includes(query))
@@ -1252,7 +1288,9 @@ function buildPanel(container: HTMLElement): () => void {
           assetSelect.append(option);
         }
         // Preselect something the user can actually add; assets often lead with metadata.
-        const firstAddable = assets.find(([key, asset]) => canAddAsset(item, key, asset));
+        const firstAddable =
+          assets.find(([key, asset]) => key === "grd-cog" && isIceyeRasterAsset(asset)) ??
+          assets.find(([key, asset]) => canAddAsset(item, key, asset));
         if (firstAddable) assetSelect.value = firstAddable[0];
         const selected = (): [string, StacAsset] =>
           assets.find(([key]) => key === assetSelect.value) ?? assets[0];
@@ -1293,6 +1331,10 @@ function buildPanel(container: HTMLElement): () => void {
           // by going quiet rather than looking like a dead click.
           setDisabled(download, signingDownloadKey === key);
           add.title = addReason(item, key, asset);
+          add.textContent = isIceyeRasterAsset(asset) ? `${labels.add} overview` : labels.add;
+          if (isIceyeRasterAsset(asset)) {
+            add.title = "Load a GCP-warped display overview (up to 2048 pixels per side). Download keeps the original product.";
+          }
         };
 
         assetSelect.addEventListener("change", syncAsset);
@@ -1481,7 +1523,7 @@ function buildPanel(container: HTMLElement): () => void {
     if (urlField.input.value !== initialCatalogUrl) presetSelectionPending = false;
   });
   const connectCatalog = async (): Promise<void> => {
-    const url = urlField.input.value.trim();
+    const url = lockedCatalogUrl ?? urlField.input.value.trim();
     setDisabled(connectButton, true);
     setStatus(labels.connecting);
     try {
@@ -1554,44 +1596,103 @@ function buildPanel(container: HTMLElement): () => void {
 
   // Clicking a footprint selects the matching result card. The bbox-draw mode
   // owns the pointer while it is active, so both handlers stand down for it.
-  const footprintIdAt = (event: MapMouseEvent): string | null => {
+  const footprintAt = (event: MapMouseEvent): { id: string; href?: string } | null => {
     const map = appRef?.getMap?.();
     if (!map || cancelDraw) return null;
     const layers = footprintStyleLayers(map);
+    if (lockedCatalogUrl) {
+      for (const layer of useAppStore.getState().layers) {
+        if (!isIceyeFootprintSource(layer.sourcePath ?? layer.source.url)) continue;
+        for (const id of [fillLayerId(layer.id), lineLayerId(layer.id)]) {
+          if (map.getLayer(id)) layers.push(id);
+        }
+      }
+    }
     if (!layers.length) return null;
-    const feature = map.queryRenderedFeatures(event.point, { layers })[0];
-    const id = feature?.properties?.id;
-    return typeof id === "string" ? id : null;
+    for (const feature of map.queryRenderedFeatures(event.point, { layers })) {
+      const reference = lockedCatalogUrl ? iceyeFootprintReference(feature.properties) : null;
+      if (reference) return reference;
+      const id = feature.properties?.id;
+      if (typeof id === "string" && allItems.some((item) => item.id === id)) return { id };
+    }
+    return null;
+  };
+
+  const openIceyeFootprint = async (reference: { id: string; href: string }): Promise<void> => {
+    if (!connection) return;
+    const generation = ++searchGeneration;
+    walking?.abort();
+    extentRead?.abort();
+    walking = new AbortController();
+    const scope = AbortSignal.any([walking.signal, controller.signal]);
+    setDisabled(searchButton, true);
+    setDisabled(loadMore, true);
+    setStatus(`Loading ICEYE scene ${reference.id}...`);
+    try {
+      const item = allItems.find((entry) => entry.id === reference.id) ??
+        await loadIceyeFootprintItem(reference, scope);
+      if (scope.aborted || generation !== searchGeneration) return;
+      const mode = iceyeItemMode(item);
+      const branch = connection.children?.find((node) =>
+        new URL(node.href).pathname.endsWith("/iceye-sar-by-mode.json"));
+      if (mode && branch) {
+        await tree.selectPath([
+          branch.href, new URL(`iceye-sar-${mode}.json`, branch.href).href,
+        ], scope);
+      }
+      if (scope.aborted || generation !== searchGeneration) return;
+      // Keep the user-added full-catalog footprint layer; only replace the search results.
+      allItems = [item];
+      nextPage = undefined;
+      searchCursor = undefined;
+      selectedItemId = item.id;
+      renderItems();
+      showFootprints(allItems);
+      applySelection(true);
+      loadMore.hidden = true;
+      setDisabled(clearResultsButton, false);
+      setStatus(`Selected ${item.id}${mode ? ` (${mode})` : ""}. Choose a product to load or download.`);
+    } catch (error) {
+      if (!scope.aborted && generation === searchGeneration) {
+        setStatus(error instanceof Error ? error.message : labels.searchFailed, true);
+      }
+    } finally {
+      if (generation === searchGeneration) {
+        setDisabled(searchButton, false);
+        setDisabled(loadMore, false);
+      }
+    }
   };
   const onMapClick = (event: MapMouseEvent): void => {
-    const id = footprintIdAt(event);
-    if (id) selectItem(id, true);
+    const target = footprintAt(event);
+    if (target?.href) void openIceyeFootprint({ id: target.id, href: target.href });
+    else if (target) selectItem(target.id, true);
   };
   const onMapMove = (event: MapMouseEvent): void => {
     const map = appRef?.getMap?.();
     if (!map || cancelDraw) return;
-    map.getCanvas().style.cursor = footprintIdAt(event) ? "pointer" : "";
+    map.getCanvas().style.cursor = footprintAt(event) ? "pointer" : "";
   };
   const map = appRef?.getMap?.();
   map?.on("click", onMapClick);
   map?.on("mousemove", onMapMove);
 
-  void loadStacIndex(fetch, controller.signal).then(
-    (catalogs) => {
-      index = catalogs;
-      renderCatalogs();
-    },
-    (error) => {
-      catalogSelect.innerHTML = "";
-      catalogSelect.append(el("option", labels.indexUnavailable));
-      // A preset catalog connects in parallel with this index fetch, so a late
-      // index failure must not overwrite a connection that already succeeded —
-      // the catalog is usable, only the browse-by-name dropdown is not.
-      if (!connection) {
-        setStatus(error instanceof Error ? error.message : labels.indexLoadFailed, true);
-      }
-    },
-  );
+  if (!lockedCatalogUrl) {
+    void loadStacIndex(fetch, controller.signal).then(
+      (catalogs) => {
+        index = catalogs;
+        renderCatalogs();
+      },
+      (error) => {
+        catalogSelect.innerHTML = "";
+        catalogSelect.append(el("option", labels.indexUnavailable));
+        // A preset connects in parallel; index failures must not hide its successful connection.
+        if (!connection) {
+          setStatus(error instanceof Error ? error.message : labels.indexLoadFailed, true);
+        }
+      },
+    );
+  }
 
   return () => {
     controller.abort();
@@ -1616,7 +1717,12 @@ function mountPanel(container: HTMLElement): void {
   disposePanel = buildPanel(container);
 }
 
-function createStacPlugin(id: string, name: string, presetCatalogUrl = ""): GeoLibrePlugin {
+function createStacPlugin(
+  id: string,
+  name: string,
+  presetCatalogUrl = "",
+  getTitle = () => labels.getTitle?.() ?? labels.title,
+): GeoLibrePlugin {
   return {
     id,
     name,
@@ -1628,10 +1734,7 @@ function createStacPlugin(id: string, name: string, presetCatalogUrl = ""): GeoL
       unregisterPanel =
         app.registerRightPanel?.({
           id,
-          title: () =>
-            presetCatalogUrl
-              ? (labels.getPlanetTitle?.() ?? labels.planetTitle)
-              : (labels.getTitle?.() ?? labels.title),
+          title: getTitle,
           dock: "replace-style",
           defaultWidth: 380,
           render(container) {
@@ -1668,6 +1771,15 @@ export const maplibrePlanetOpenDataPlugin = createStacPlugin(
   PLANET_OPEN_DATA_PLUGIN_ID,
   "Planet Open Data",
   PLANET_DISASTER_DATA_CATALOG_URL,
+  () => labels.getPlanetTitle?.() ?? labels.planetTitle,
+);
+
+/** Uses the shared STAC browser for ICEYE's public SAR collections. */
+export const maplibreIceyeOpenDataPlugin = createStacPlugin(
+  ICEYE_OPEN_DATA_PLUGIN_ID,
+  "ICEYE Open Data",
+  ICEYE_OPEN_DATA_CATALOG_URL,
+  () => labels.getIceyeTitle?.() ?? labels.iceyeTitle,
 );
 
 export default maplibreStacCatalogsPlugin;

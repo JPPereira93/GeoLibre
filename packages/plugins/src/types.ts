@@ -182,6 +182,10 @@ export type GeoLibreCogRenderEngine = "maplibre-gl-raster" | "cog-tiler-wasm" | 
  * the GeoTIFF when they are omitted.
  */
 export interface GeoLibreCogLayerOptions {
+  /** Warp a bounded WGS84 GCP overview for display; the source remains available for download. */
+  gcpOverview?: boolean;
+  /** Cancel a pending display conversion when the originating panel closes. */
+  signal?: AbortSignal;
   /**
    * Renderer that decodes this COG. WASM is globe-compatible; the GPU renderer
    * requires Mercator. Unlike the other options here this is **not** per layer:

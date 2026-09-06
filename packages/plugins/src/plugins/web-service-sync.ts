@@ -30,6 +30,7 @@ export const WEB_SERVICE_PLUGIN_IDS = [
   "maplibre-usgs-nldi",
   "maplibre-gl-vantor",
   "geolibre-planet-open-data",
+  "geolibre-iceye-open-data",
   "maplibre-gl-earthdata-gis",
   "maplibre-gl-openaerialmap",
   "maplibre-gl-arcgis-hub",

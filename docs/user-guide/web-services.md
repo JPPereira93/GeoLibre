@@ -10,7 +10,7 @@ They are grouped together because they behave the same way, not because they sha
 
 - **Activating** an entry opens its panel; closing the panel deactivates the plugin. A check mark next to **Web Services** in the Plugins menu means at least one of them is active.
 - **Layers you add are real layers.** Whatever a panel puts on the map is mirrored into the GeoLibre layer store, so it appears in the [Layers panel](layers.md), can be reordered, hidden, restyled, and removed there, and is saved into the `.geolibre.json` [project file](projects.md). Reopening the project restores the layer and hands it back to its panel.
-- **The catalog browsers are mutually exclusive.** STAC Catalogs and Planet Open Data share panel state, so activating one deactivates the other; if the switch fails, the plugin that was displaced comes back.
+- **The catalog browsers are mutually exclusive.** STAC Catalogs, Planet Open Data, and ICEYE Open Data share panel state, so activating one deactivates the other; if the switch fails, the plugin that was displaced comes back.
 - **Nothing here needs an account** except Hugging Face uploads (a user access token) and GeoLens private datasets (an API key).
 
 ## At a glance
@@ -24,6 +24,7 @@ They are grouped together because they behave the same way, not because they sha
 | [USGS NLDI](#usgs-nldi) | USGS | Flowline tracing, hydrolocation, basins, and network navigation |
 | [Vantor Open Data](#vantor-open-data) | Vantor | Disaster-event satellite imagery (COG) |
 | [Planet Open Data](#planet-open-data) | Planet Labs | Planet's disaster data releases, through the STAC browser |
+| [ICEYE Open Data](#iceye-open-data) | ICEYE | Public SAR imagery, grouped by acquisition mode and stacks, through the STAC browser |
 | [Earthdata GIS](#earthdata-gis) | NASA EOSDIS | ArcGIS image, map, and feature services, and published web maps |
 | [OpenAerialMap](#openaerialmap) | OpenAerialMap | Openly licensed drone and aerial imagery |
 | [ArcGIS Hub](#arcgis-hub) | Esri | Public datasets published to ArcGIS Hub |
@@ -100,6 +101,20 @@ A STAC explorer for [Vantor's](https://www.vantor.com/) open disaster imagery re
 ## Planet Open Data
 
 The same panel as [STAC Catalogs](#stac-catalogs), pinned to [Planet Labs PBC's](https://www.planet.com/disasterdata/) continuously updated disaster data releases so the catalog is already selected when it opens. Everything below about searching, filtering, and adding assets applies here too.
+
+## ICEYE Open Data
+
+Choose a raster product, including **Quicklook COG**, from the asset dropdown and use **Add overview** to display it. **Download** opens the original asset. There is no separate Preview button.
+
+ICEYE's GCP-georeferenced rasters need conversion before display. **Add overview** reads an embedded overview and warps its ground control points to a regular map grid in the browser, up to 2048 pixels per side. If the smallest overview is larger, it is downsampled within a 32 MiB decoded-source budget; for example, Dwell Precise's 2500-pixel GRD overview is reduced to 2048 pixels. The display layer is labeled **display overview**; it is not the original-resolution SAR product. **Download** still opens the untouched original. The first conversion loads GDAL WebAssembly from the same CDN used by GeoLibre's Georeferencer. Complex SAR data and products exceeding the source budget require dedicated processing; select **Quicklook COG** for a display alternative rather than downloading the full product into browser memory.
+
+Expand **About ICEYE imaging modes** above the collections for a short comparison of the Dwell, Spot, Stripmap and Scan families. The guide links to [ICEYE's official imaging-mode specifications](https://sar.iceye.com/latest/productspecification/imagingmodes/) and distinguishes nominal product resolution from pixel spacing and the display overview's resolution.
+
+Add **GeoJSON of scene footprints** from the full collection, then click a footprint with the ICEYE panel open. The browser loads that scene directly from its embedded STAC link, selects its group under **ICEYE Open SAR Data by Acquisition Mode**, and highlights its product card. The full footprint layer stays on the map so you can click another scene. Clicking does not automatically download or load imagery.
+
+Opens the shared [STAC Catalogs](#stac-catalogs) browser with the [ICEYE SAR Open Data catalog](https://iceye-open-data-catalog.s3-us-west-2.amazonaws.com/catalog.json) selected. Browse the full collection or expand the acquisition-mode and stack groups, filter by date and map extent, and add supported GeoTIFF assets to the map. Asset links also let you download the original products.
+
+This is a static STAC catalog: searches follow catalog and item links in the browser, so narrow your collection selection for faster searches. The catalog and sampled assets permit browser CORS requests and require no proxy or API key. Raster visualization depends on the selected product and rendering engine; loading an SLC asset does not perform SAR calibration or interferometric processing.
 
 ## Earthdata GIS
 

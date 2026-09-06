@@ -50,6 +50,7 @@ import {
   maplibreGeoLensPlugin,
   maplibreVantorPlugin,
   maplibrePlanetOpenDataPlugin,
+  maplibreIceyeOpenDataPlugin,
   maplibreOvertureMapsPlugin,
   queryOvertureFeatures,
   maplibreGraticulePlugin,
@@ -204,6 +205,7 @@ manager.registerAll([
   maplibreUsgsNldiPlugin,
   maplibreVantorPlugin,
   maplibrePlanetOpenDataPlugin,
+  maplibreIceyeOpenDataPlugin,
   maplibreEarthdataGisPlugin,
   maplibreOpenAerialMapPlugin,
   maplibreArcGisHubPlugin,
@@ -942,7 +944,11 @@ export function createAppAPI(mapControllerRef?: RefObject<MapEngine | null>) {
     // raster control. Besides keeping every COG path on one renderer, this is
     // what mirrors the layer as `maplibre-gl-raster`, making the full Raster
     // symbology section available in the Style panel.
-    addCogLayer: (name: string, url: string, options?: GeoLibreCogLayerOptions) => {
+    addCogLayer: async (name: string, url: string, options?: GeoLibreCogLayerOptions) => {
+      const source = options?.gcpOverview
+        ? await (await import("../lib/gcp-raster-overview")).prepareGcpRasterOverview(url, options.signal)
+        : url;
+      options?.signal?.throwIfAborted();
       const bands = options?.bands
         ?.split(",")
         .map((value) => Number(value.trim()))
@@ -951,7 +957,7 @@ export function createAppAPI(mapControllerRef?: RefObject<MapEngine | null>) {
         options?.rescaleMin !== undefined && options.rescaleMax !== undefined
           ? ([options.rescaleMin, options.rescaleMax] as [number, number])
           : undefined;
-      return addRasterToMap(api, url, {
+      return addRasterToMap(api, source, {
         name,
         // Control-wide, not per layer: see cogEngineDefaults.
         defaults: cogEngineDefaults(options?.engine),

@@ -7,10 +7,12 @@ import {
   assetFormat,
   isAzureBlobHref,
   isVisualizableAsset,
+  isIceyeRasterAsset,
   itemBbox,
   openCatalogNode,
   searchStacApi,
   searchStaticStac,
+  stacGeoJsonFeatureCollection,
   assetTargets,
   canAddAsset,
   icechunkBranch,
@@ -33,6 +35,60 @@ function jsonResponse(value: unknown, status = 200): Response {
     headers: { "Content-Type": "application/json" },
   });
 }
+
+test("ICEYE GCP display conversion is restricted to ICEYE raster assets", () => {
+  for (const host of ["iceye-open-data-catalog.s3.amazonaws.com", "iceye-open-data-catalog.s3-us-west-2.amazonaws.com"]) {
+    assert.equal(isIceyeRasterAsset({ href: `https://${host}/scene.tif` }), true);
+    assert.equal(isIceyeRasterAsset({ href: `https://${host}/scene.json` }), false);
+  }
+  assert.equal(isIceyeRasterAsset({ href: "https://other.test/scene.tif" }), false);
+  assert.equal(isIceyeRasterAsset({ href: "not-a-url" }), false);
+});
+
+
+test("ICEYE single-feature metadata becomes a collection before entering the layer store", () => {
+  const feature = {
+    type: "Feature",
+    id: "ICEYE_CSI",
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 0],
+        ],
+      ],
+    },
+    properties: { "sar:product_type": "CSI-COG" },
+  };
+  const collection = stacGeoJsonFeatureCollection(feature);
+  assert.equal(collection.type, "FeatureCollection");
+  assert.deepEqual([...collection.features], [feature]);
+  assert.equal(collection.features[0].properties?.["sar:product_type"], "CSI-COG");
+});
+
+test("STAC GeoJSON collections retain their data, including empty and null-geometry features", () => {
+  for (const features of [[], [{ type: "Feature", geometry: null, properties: null }]]) {
+    const collection = { type: "FeatureCollection", features };
+    assert.equal(stacGeoJsonFeatureCollection(collection), collection);
+  }
+});
+
+test("malformed STAC GeoJSON cannot enter the layer store", () => {
+  for (const value of [
+    null,
+    [],
+    { type: "Catalog" },
+    { type: "FeatureCollection" },
+    { type: "FeatureCollection", features: {} },
+    { type: "FeatureCollection", features: [null] },
+    { type: "Feature" },
+  ]) {
+    assert.throws(() => stacGeoJsonFeatureCollection(value), /not a GeoJSON/);
+  }
+});
 
 test("browserAssetHref converts anonymous S3 STAC assets to fetchable HTTPS URLs", () => {
   assert.equal(
@@ -2183,9 +2239,13 @@ test("an item names the Zarr account in either spelling, as an asset does", asyn
           collection: "era5-pds",
           properties: {
             datetime: "2020-12-01T00:00:00Z",
-            "xarray:open_kwargs": { storage_options: { account_name: "cpdataeuwest" } },
+            "xarray:open_kwargs": {
+              storage_options: { account_name: "cpdataeuwest" },
+            },
           },
-          assets: { data: { href: "abfs://era5/a.zarr", type: "application/vnd+zarr" } },
+          assets: {
+            data: { href: "abfs://era5/a.zarr", type: "application/vnd+zarr" },
+          },
         },
       ],
       links: [],

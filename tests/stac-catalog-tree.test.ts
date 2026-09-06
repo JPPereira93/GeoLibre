@@ -6,6 +6,28 @@ import type { StacCatalogNode, StacOpenedNode } from "../packages/plugins/src/pl
 
 const LABELS = { empty: "«empty»", openFailed: "«open failed»" };
 
+test("a linked item can reveal and select its mode without triggering a catalog search", async () => {
+  await withDom(async () => {
+    const modes = node("modes", "container");
+    const fine = node("dwell-fine", "collection");
+    const calls: string[] = [];
+    const tree = buildCatalogTree({ labels: LABELS, onError: assert.fail,
+      onActivate: () => assert.fail("must not search the whole mode"),
+      read: async (href) => { calls.push(href); return { kind: "container", children: [fine] }; },
+    });
+    tree.reset([modes]);
+    assert.equal(await tree.selectPath([modes.href, fine.href]), true);
+    assert.deepEqual(tree.selection(), [fine.href]);
+    assert.deepEqual(calls, [modes.href]);
+    assert.equal(rowsOf(tree)[0].getAttribute("aria-expanded"), "true");
+    assert.equal(await tree.selectPath([modes.href, fine.href]), true);
+    assert.deepEqual(tree.selection(), [fine.href], "selecting the same path must not toggle it off");
+    const aborted = AbortSignal.abort();
+    assert.equal(await tree.selectPath([modes.href], aborted), false);
+    assert.deepEqual(tree.selection(), [fine.href]);
+  });
+});
+
 /**
  * The tree writes styles and reads them back, so a hand-written double would only ever prove that
  * the double round-trips. linkedom parses and re-serializes declarations the way a browser does.

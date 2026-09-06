@@ -991,6 +991,8 @@ export function TopToolbar({
       getTitle: () => i18n.t("stacPlugin.title"),
       planetTitle: t("toolbar.plugin.geolibre-planet-open-data"),
       getPlanetTitle: () => i18n.t("toolbar.plugin.geolibre-planet-open-data"),
+      iceyeTitle: t("toolbar.plugin.geolibre-iceye-open-data"),
+      getIceyeTitle: () => i18n.t("toolbar.plugin.geolibre-iceye-open-data"),
       footprintLayerName: t("stacPlugin.footprintLayerName"),
       catalogSearch: t("stacPlugin.catalogSearch"),
       catalogSearchPlaceholder: t("stacPlugin.catalogSearchPlaceholder"),

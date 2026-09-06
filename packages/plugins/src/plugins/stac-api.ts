@@ -1,4 +1,35 @@
-import type { BBox, Feature, Geometry } from "geojson";
+import type { BBox, Feature, FeatureCollection, Geometry } from "geojson";
+
+/** STAC GeoJSON assets may be individual features, including ICEYE product metadata. */
+export function stacGeoJsonFeatureCollection(value: unknown): FeatureCollection {
+  const isFeature = (candidate: unknown): candidate is Feature => {
+    if (!candidate || typeof candidate !== "object") return false;
+    const feature = candidate as Record<string, unknown>;
+    return (
+      feature.type === "Feature" &&
+      "geometry" in feature &&
+      (feature.geometry === null ||
+        (typeof feature.geometry === "object" &&
+          feature.geometry !== null &&
+          "type" in feature.geometry)) &&
+      "properties" in feature &&
+      (feature.properties === null ||
+        (typeof feature.properties === "object" && !Array.isArray(feature.properties)))
+    );
+  };
+  if (isFeature(value)) return { type: "FeatureCollection", features: [value] };
+  if (value && typeof value === "object") {
+    const collection = value as Record<string, unknown>;
+    if (
+      collection.type === "FeatureCollection" &&
+      Array.isArray(collection.features) &&
+      collection.features.every(isFeature)
+    ) {
+      return value as FeatureCollection;
+    }
+  }
+  throw new Error("The STAC asset is not a GeoJSON Feature or FeatureCollection.");
+}
 
 export const STAC_INDEX_CATALOGS_URL = "https://stacindex.org/api/catalogs";
 const USGS_ASTROGEOLOGY_API_URL = "https://stac.astrogeology.usgs.gov/api";
@@ -67,6 +98,13 @@ export interface StacItem extends Feature<Geometry | null> {
   };
   assets: Record<string, StacAsset>;
   links?: StacLink[];
+}
+
+export function isIceyeRasterAsset(asset: StacAsset): boolean {
+  if (assetFormat(asset) !== "cog") return false;
+  const hostname = new URL(asset.href).hostname;
+  return hostname === "iceye-open-data-catalog.s3.amazonaws.com" ||
+    hostname === "iceye-open-data-catalog.s3-us-west-2.amazonaws.com";
 }
 
 export interface StacCollection {
@@ -283,6 +321,15 @@ function isStacItem(value: unknown): value is StacItem {
   return (
     "id" in value && typeof value.id === "string" && "assets" in value && Boolean(value.assets)
   );
+}
+
+/** Open one linked STAC item without traversing its parent catalog. */
+export async function loadStacItem(href: string, fetcher: FetchLike = fetch, signal?: AbortSignal): Promise<StacItem> {
+  const value = await fetchJson<StacItem>(href, { signal }, fetcher);
+  if (!isStacItem(value) || value.type !== "Feature" || !value.properties || typeof value.properties !== "object") {
+    throw new Error("The linked document is not a STAC item.");
+  }
+  return normalizeItem(value, href);
 }
 
 function normalizeItem(item: StacItem, base: string): StacItem {
@@ -578,7 +625,11 @@ function inTime(item: StacItem, interval?: string): boolean {
 
 /** Searches a static catalog by following child/item links, with a hard safety cap. */
 /** Queued but unread; the root arrives already read. */
-type Unread = { url: string; document?: Record<string, unknown>; retried?: boolean };
+type Unread = {
+  url: string;
+  document?: Record<string, unknown>;
+  retried?: boolean;
+};
 
 /** A read about to happen, and the queue it came out of, so a failure can go back there. */
 type Pending = { entry: Unread; from: Unread[] };
@@ -970,7 +1021,12 @@ export function zarrCrs(item: StacItem, asset: StacAsset): string | undefined {
 export function zarrLayerRequest(
   href: string,
   variable: string,
-  options: { colormap?: string; rescaleMin?: number; rescaleMax?: number; crs?: string } = {},
+  options: {
+    colormap?: string;
+    rescaleMin?: number;
+    rescaleMax?: number;
+    crs?: string;
+  } = {},
 ): ZarrLayerRequest {
   const { colormap, rescaleMin, rescaleMax, crs } = options;
   return {
