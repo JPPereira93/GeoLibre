@@ -32,9 +32,18 @@ const manifest = () => ({
   tiles: [`${baseUrl}/{z}/{x}/{y}.png`, `${baseUrl}/replica/{z}/{x}/{y}.png`],
   attribution: "Test imagery",
 });
+// Serves the full manifest once, then a document that dropped every optional
+// field — a server that stopped advertising its extent between two sessions.
+let shrinkingRequests = 0;
 const server = createServer((request, response) => {
   requests++;
-  if (request.url === "/missing.json") {
+  if (request.url === "/shrinking.json") {
+    const { tilejson, name, tiles } = manifest();
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(
+      JSON.stringify(shrinkingRequests++ === 0 ? manifest() : { tilejson, name, tiles }),
+    );
+  } else if (request.url === "/missing.json") {
     response.writeHead(404).end("Missing");
   } else if (request.url === "/legacy") {
     response.writeHead(200, { "Content-Type": "application/json" });
@@ -108,6 +117,23 @@ describe("raster TileJSON import", () => {
     assert.deepEqual(reopened.layers[0].source.tiles, manifest().tiles);
     assert.equal(reopened.layers[0].source.minzoom, 12);
     assert.equal(reopened.layers[0].source.maxzoom, 20);
+  });
+
+  it("drops source options the refreshed TileJSON no longer declares", async () => {
+    const tileUrl = await resolveXyzTileUrlTemplate(`${baseUrl}/shrinking.json`);
+    const layer = buildXyzLayer({ name: "Imagery", tileUrl, tileSize: "256", shortUrl: false });
+    assert.deepEqual(layer.source.bounds, bounds);
+    const project = createEmptyProject();
+    project.layers = [layer];
+    const reopened = await resolveProjectXyzLayers(parseProject(serializeProject(project)));
+    const source = reopened.layers[0].source;
+    assert.equal(source.bounds, undefined);
+    assert.equal(source.minzoom, undefined);
+    assert.equal(source.maxzoom, undefined);
+    assert.equal(source.scheme, undefined);
+    assert.equal(source.attribution, undefined);
+    assert.deepEqual(source.tiles, manifest().tiles);
+    assert.equal(reopened.layers[0].metadata.tilejsonUrl, `${baseUrl}/shrinking.json`);
   });
 
   it("imports a saved XYZ service with TileJSON metadata", async () => {

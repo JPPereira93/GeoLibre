@@ -7,6 +7,9 @@ import { isTauri } from "./tauri-io";
 
 const XYZ_TILE_PROTOCOL = "geolibre-xyz";
 
+/** The source options {@link parseXyzTileJson} derives from a TileJSON document. */
+const TILEJSON_SOURCE_KEYS = ["bounds", "minzoom", "maxzoom", "scheme", "attribution"] as const;
+
 let protocolRegistered = false;
 
 export interface ResolvedXyzTileUrl {
@@ -129,16 +132,26 @@ async function resolveProjectXyzLayer(
     hasShortUrlMetadata || !hasXyzTilePlaceholders(normalizedUrl)
       ? await resolveXyzTileUrlTemplate(url, signal)
       : createXyzTileUrlTemplate(url);
+  // A saved TileJSON layer re-reads its document on every open, so the spreads
+  // below must not keep fields the refreshed document dropped — a stale
+  // `bounds` or zoom limit would go on clipping the layer invisibly. Drop the
+  // TileJSON-derived options first and let the new document reinstate them.
+  const source = { ...layer.source };
+  const metadata = { ...layer.metadata };
+  if (tileUrl.tilejson || typeof metadata.tilejsonUrl === "string") {
+    for (const key of TILEJSON_SOURCE_KEYS) delete source[key];
+    delete metadata.tilejsonUrl;
+  }
   return {
     ...layer,
     source: {
-      ...layer.source,
+      ...source,
       ...(tileUrl.tilejson ?? {}),
       tiles: tileUrl.tilejson?.tiles ?? [tileUrl.renderUrl],
       url: tileUrl.originalUrl,
     },
     metadata: {
-      ...layer.metadata,
+      ...metadata,
       originalUrl:
         tileUrl.redirected || layer.metadata.originalUrl ? tileUrl.originalUrl : undefined,
       resolvedUrl: tileUrl.redirected ? tileUrl.url : undefined,
