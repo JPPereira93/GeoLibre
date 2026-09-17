@@ -78,7 +78,8 @@ export function buildXyzLayer(params: XyzLayerParams): GeoLibreLayer {
     "xyz",
     {
       type: "raster",
-      tiles: [tileUrl.renderUrl],
+      ...(tileUrl.tilejson ?? {}),
+      tiles: tileUrl.tilejson?.tiles ?? [tileUrl.renderUrl],
       tileSize: toTileSize(tileSize),
       url: tileUrl.originalUrl,
     },
@@ -86,6 +87,7 @@ export function buildXyzLayer(params: XyzLayerParams): GeoLibreLayer {
       originalUrl: shortUrl ? tileUrl.originalUrl : undefined,
       resolvedUrl: tileUrl.redirected ? tileUrl.url : undefined,
       sourceKind: "xyz-url",
+      ...(tileUrl.tilejson ? { tilejsonUrl: tileUrl.originalUrl } : {}),
     },
   );
 }
@@ -464,9 +466,7 @@ export async function applyServiceEntry(
       // this module's pure exports usable outside the browser (unit tests).
       const xyzUrl = await import("../../../lib/xyz-url");
       if (request.shortUrl) xyzUrl.registerXyzTileProtocol();
-      const tileUrl = request.shortUrl
-        ? await xyzUrl.resolveXyzTileUrlTemplate(request.url)
-        : xyzUrl.createXyzTileUrlTemplate(request.url);
+      const tileUrl = await xyzUrl.resolveXyzTileUrlTemplate(request.url);
       addLayer(
         buildXyzLayer({
           name: entry.name,
