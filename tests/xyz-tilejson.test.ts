@@ -3,8 +3,10 @@ import { after, afterEach, before, describe, it, mock } from "node:test";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
+  captureLayerLibraryEntry,
   createEmptyProject,
   parseProject,
+  projectFromStore,
   serializeProject,
   type GeoLibreLayer,
 } from "@geolibre/core";
@@ -134,6 +136,36 @@ describe("raster TileJSON import", () => {
     assert.equal(source.attribution, undefined);
     assert.deepEqual(source.tiles, manifest().tiles);
     assert.equal(reopened.layers[0].metadata.tilejsonUrl, `${baseUrl}/shrinking.json`);
+  });
+
+  it("keeps its tile templates through the real save path and the Layer Library", async () => {
+    const tileUrl = await resolveXyzTileUrlTemplate(`${baseUrl}/tilejson.json`);
+    const layer = buildXyzLayer({ name: "Imagery", tileUrl, tileSize: "256", shortUrl: false });
+    // projectFromStore (not the serialize/parse round trip) is what "Save
+    // Project" runs, and it rewinds an XYZ layer's tiles to the URL the user
+    // typed. The TileJSON document URL has no {z}/{x}/{y}, so a collapse here
+    // would leave the reopened layer unable to request a tile whenever the
+    // document is unreachable and re-resolution falls back to the saved source.
+    const saved = projectFromStore({
+      projectName: "P",
+      mapView: { center: [0, 0], zoom: 1, bearing: 0, pitch: 0 },
+      basemapStyleUrl: "",
+      basemapVisible: true,
+      basemapOpacity: 1,
+      layers: [layer],
+      preferences: createEmptyProject().preferences,
+      metadata: {},
+    });
+    assert.deepEqual(saved.layers[0].source.tiles, manifest().tiles);
+    assert.equal(saved.layers[0].source.url, `${baseUrl}/tilejson.json`);
+
+    // The Layer Library re-adds a captured source verbatim, with no
+    // re-resolution step at all, so the same collapse would simply break it.
+    const captured = captureLayerLibraryEntry(layer, { id: "e1", addedAt: "2026-01-01" });
+    assert.equal(captured.ok, true);
+    assert.ok(captured.ok);
+    assert.deepEqual(captured.entry.source.tiles, manifest().tiles);
+    assert.equal(captured.entry.source.url, `${baseUrl}/tilejson.json`);
   });
 
   it("imports a saved XYZ service with TileJSON metadata", async () => {
@@ -267,7 +299,26 @@ describe("TileJSON validation", () => {
       () => parseXyzTileJson({ ...manifest(), vector_layers: [{ id: "roads" }] }),
       /vector tiles/,
     );
+    // Esri VectorTileServer documents use the camelCase spelling.
+    assert.throws(
+      () => parseXyzTileJson({ ...manifest(), vectorLayers: [{ id: "roads" }] }),
+      /vector tiles/,
+    );
     assert.throws(() => parseXyzTileJson({ ...manifest(), tilejson: 3 }), /version/);
+  });
+
+  it("defuses markup in a remote attribution string", () => {
+    const parsed = parseXyzTileJson({
+      ...manifest(),
+      attribution: '<img src=x onerror="alert(1)">© Provider',
+    });
+    // The attribution control writes its markup with innerHTML, so the property
+    // that matters is that no element survives to carry the handler. DOMPurify
+    // drops the tag outright in the browser; without a DOM (here) it escapes the
+    // markup wholesale instead. Asserting on the absence of a live "<" covers
+    // both branches, since neither keeps a tag outside this allowlist.
+    assert.ok(!String(parsed.attribution).includes("<"));
+    assert.match(String(parsed.attribution), /Provider/);
   });
 
   it("ignores invalid optional bounds and zoom limits", () => {

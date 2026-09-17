@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { addProtocol, type RequestParameters } from "maplibre-gl";
 import { fetchUrlBytes, resolveUrlRedirect } from "./native-http";
 import { isHttpWmsUrl, nativeWmsTileUrl, WMS_TILE_PROTOCOL } from "./native-wms-url";
+import { sanitizeAttributionHtml } from "./sanitize-html";
 import { isTauri } from "./tauri-io";
 
 const XYZ_TILE_PROTOCOL = "geolibre-xyz";
@@ -247,6 +248,11 @@ async function resolveShortXyzUrl(url: string, signal?: AbortSignal): Promise<Re
   signal?.throwIfAborted();
   const text = new TextDecoder().decode(new Uint8Array(bytes)).trim();
   if (text.startsWith("{") || text.startsWith("[") || text.startsWith('"') || isHttpUrl(text)) {
+    // `fetch_url_bytes` follows redirects internally but returns only bytes, so
+    // the document URL is unknowable here and `url` stands in for it. A TileJSON
+    // reached through this fallback therefore reports `redirected: false` and
+    // leaves `metadata.resolvedUrl` unset even if the request did redirect —
+    // cosmetic, since the tile templates come from the document itself.
     return resolvedXyzBody(text, url, url);
   }
   // An image response can still be a short URL redirecting to a template.
@@ -314,7 +320,12 @@ export function parseXyzTileJson(value: unknown): XyzTileJsonSource {
   if (typeof record.tilejson !== "string" || !/^\d+\.\d+\.\d+$/.test(record.tilejson)) {
     throw new Error("Invalid TileJSON version.");
   }
-  if (Array.isArray(record.vector_layers) && record.vector_layers.length > 0) {
+  // Esri `VectorTileServer` documents spell this `vectorLayers`; `vectorLayerIds`
+  // in ogc-vector-tiles.ts accepts both spellings, so reject both here rather
+  // than let a camelCase document through as a raster source and serve protobuf
+  // where an image is expected.
+  const vectorLayers = record.vector_layers ?? record.vectorLayers;
+  if (Array.isArray(vectorLayers) && vectorLayers.length > 0) {
     throw new Error("This TileJSON describes vector tiles. Use a vector tile source instead.");
   }
   if (!Array.isArray(record.tiles) || record.tiles.length === 0) {
@@ -357,7 +368,9 @@ export function parseXyzTileJson(value: unknown): XyzTileJsonSource {
     delete source.maxzoom;
   }
   if (record.scheme === "xyz" || record.scheme === "tms") source.scheme = record.scheme;
-  if (typeof record.attribution === "string") source.attribution = record.attribution;
+  if (typeof record.attribution === "string") {
+    source.attribution = sanitizeAttributionHtml(record.attribution);
+  }
   return source;
 }
 
