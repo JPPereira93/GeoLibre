@@ -110,9 +110,11 @@ function symbologyKey(
 ): string {
   return JSON.stringify([
     symbology.classified,
-    state.rescale,
-    state.stretch,
-    state.gamma,
+    // The renderer's value window only reaches the continuous branch (it maps
+    // texture columns back to data values for opacity). A stepped colormap
+    // ignores it, so leaving it out of the key keeps rescale / stretch / gamma
+    // edits from needlessly rebuilding a classified layer's GPU texture.
+    symbology.classified ? null : [state.rescale, state.stretch, state.gamma],
     symbology.breaks,
     symbology.ramp,
     symbology.customColors ?? null,

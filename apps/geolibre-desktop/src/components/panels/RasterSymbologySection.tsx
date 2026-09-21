@@ -156,6 +156,14 @@ function rangeFromBreaks(breaks: number[]): [number, number][] {
   return [[breaks[0], breaks[breaks.length - 1]]];
 }
 
+/** The value domain a continuous opacity ramp's breaks span, if they are usable. */
+function opacityRangeFromBreaks(breaks: number[]): [number, number] | undefined {
+  const [min, max] = rangeFromBreaks(breaks)[0];
+  return breaks.length >= 2 && Number.isFinite(min) && Number.isFinite(max) && max > min
+    ? [min, max]
+    : undefined;
+}
+
 /**
  * Single-band pseudocolor (with optional discrete classification) and RGB
  * band-combination controls for a maplibre-gl-raster COG layer. Edits the
@@ -277,7 +285,9 @@ export function RasterSymbologySection({
       stats.min >= symbology.breaks[0] &&
       stats.max <= symbology.breaks[symbology.breaks.length - 1];
     if (isDefaultRange || !coversData) {
-      recomputeSymbology({ ...symbology }, isDefaultRange ? { range: [stats.min, stats.max] } : {});
+      // Always explicit: the breaks-derived fallback in recomputeSymbology
+      // would otherwise re-use the very breaks this effect is replacing.
+      recomputeSymbology({ ...symbology }, { range: [stats.min, stats.max] });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stats]);
@@ -356,10 +366,20 @@ export function RasterSymbologySection({
     // Reusing the prior histogram here is safe: a range override only happens
     // for equal-interval (the Min/Max inputs are disabled for quantile), and
     // equal-interval breaks use only min/max — never the histogram.
+    //
+    // A continuous opacity ramp keeps its value domain in `breaks` alone (the
+    // display stretch is edited separately and is not rewritten here), so a
+    // later method / class-count edit re-derives the range from those breaks —
+    // reading `state.rescale` instead would discard a Min/Max edit made through
+    // the opacity controls. The gate looks at the classification state this
+    // call is about to commit, not the pre-toggle one, so switching on
+    // "Classify into discrete classes" still derives its classes from the full
+    // data range exactly as it does from a plain continuous ramp.
+    const nextClassified = overrides.classified ?? symbology?.classified ?? false;
     const range =
       overrides.range ??
-      (!symbology?.classified && symbology?.opacityClasses && next.method === "equal-interval"
-        ? state.rescale?.[0]
+      (!nextClassified && symbology?.opacityClasses && next.method === "equal-interval"
+        ? (opacityRangeFromBreaks(symbology.breaks) ?? state.rescale?.[0])
         : undefined);
     const effectiveStats: RasterBandStats | null = range
       ? { min: range[0], max: range[1], histogram: stats?.histogram ?? [] }
@@ -393,7 +413,6 @@ export function RasterSymbologySection({
       ),
       breaks.length - 1,
     );
-    const nextClassified = overrides.classified ?? symbology?.classified ?? false;
     commit({
       // Discrete colors use the class extent as their renderer rescale. For a
       // continuous ramp, breaks describe opacity only and must not replace the
@@ -829,12 +848,21 @@ export function RasterSymbologySection({
                   },
                 );
               } else if (symbology) {
+                // Mirror the classify-off handler: once opacity is gone, a
+                // custom ramp is the only thing the record still expresses, so
+                // drop it entirely rather than saving a dead `classified:
+                // false, opacityClasses: false` blob into the project.
+                const custom =
+                  (customColors?.length ?? 0) >= MIN_CUSTOM_COLORS ? customColors : undefined;
                 commit({
-                  symbology: {
-                    ...symbology,
-                    opacityClasses: false,
-                    classOpacities: undefined,
-                  },
+                  symbology: custom
+                    ? {
+                        ...symbology,
+                        opacityClasses: false,
+                        classOpacities: undefined,
+                        customColors: custom,
+                      }
+                    : null,
                 });
               }
             }}

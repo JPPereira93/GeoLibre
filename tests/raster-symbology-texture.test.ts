@@ -268,6 +268,44 @@ describe("raster symbology render injection", () => {
     assert.equal(destroyed, 4);
   });
 
+  it("leaves a classified texture alone when only the render stretch changes", () => {
+    const symbology = {
+      classified: true,
+      ramp: "viridis",
+      customColors: ["#ff0000", "#0000ff"],
+      method: "manual",
+      classCount: 2,
+      breaks: [0, 25, 100],
+      classOpacities: [0.5, 1],
+    };
+    const layer = rasterLayer("stepped", { rasterSymbology: symbology });
+    useAppStore.getState().addLayer(layer);
+    const control = fakeControl();
+    let created = 0;
+    control._layerManager._device = {
+      createTexture: () => ({ id: ++created, destroy: () => {} }),
+    };
+    activateRasterClassification(control);
+    renderColormapProps(control, layer.id);
+    assert.equal(created, 1);
+    // A stepped colormap never reads rescale / stretch / gamma, so editing them
+    // must not invalidate its cached GPU texture.
+    useAppStore.getState().updateLayer(layer.id, {
+      metadata: {
+        ...layer.metadata,
+        rasterState: {
+          ...(layer.metadata.rasterState as object),
+          gamma: 2,
+          stretch: "sqrt",
+          rescale: [[0, 50]],
+        },
+        rasterSymbology: symbology,
+      },
+    });
+    renderColormapProps(control, layer.id);
+    assert.equal(created, 1);
+  });
+
   it("switches from the WASM renderer when discrete classes need the GPU pipeline", () => {
     useAppStore.getState().addLayer(
       rasterLayer("r1", {

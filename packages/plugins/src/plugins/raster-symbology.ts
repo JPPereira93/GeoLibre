@@ -325,6 +325,17 @@ export function buildContinuousColormapRgba(
     rgba[offset + 2] = color.b;
     // Undo the upstream stretch and gamma for opacity lookup only. Colors
     // still sample the adjusted coordinate, while opacity stays tied to values.
+    //
+    // This inverts `maplibre-gl-raster`'s render pipeline, which the package
+    // does not export, so it is a hand-written mirror (docs/maintenance.md).
+    // Its `pushAdjustments` runs rescale → stretch → gamma and only then
+    // samples the colormap, so a texture column is the fully adjusted value and
+    // the inverse has to unwind gamma first, then the stretch curve:
+    //   gamma  `pow(x, 1.0 / max(gamma, 0.0001))`  → `pow(t, max(gamma, 1e-4))`
+    //   sqrt   `sqrt(x)`                           → `t * t`
+    //   log    `log(1 + 99x) / log(1 + 99)`        → `(100^t - 1) / 99`
+    // The package's own `inverseStretch` helper (used for its histogram ticks)
+    // is the same pair of curves.
     let t = column / (width - 1);
     t = Math.pow(t, Math.max(opacity?.gamma ?? 1, 0.0001));
     if (opacity?.stretch === "sqrt") t *= t;

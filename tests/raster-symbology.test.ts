@@ -387,6 +387,12 @@ describe("continuous opacity classes", () => {
     }
   });
 
+  // The expected thresholds below replay maplibre-gl-raster's *forward*
+  // pipeline (rescale -> stretch -> gamma -> colormap sample), transcribed from
+  // that package's `pushAdjustments` shader modules: `sqrt(x)`,
+  // `log(1 + 99x) / log(1 + 99)` and `pow(x, 1 / gamma)`. See the
+  // `maplibre-gl-raster` entries in docs/maintenance.md — nothing here fails to
+  // build if upstream retunes those curves, so this test is the drift guard.
   it("keeps opacity thresholds in data values under stretch, gamma and changed rescale", () => {
     for (const stretch of ["linear", "sqrt", "log"]) {
       const rgba = buildContinuousColormapRgba(["#000000", "#ffffff"], false, {

@@ -221,6 +221,24 @@ format/reader/size rules those panels share — a per-panel copy would miss this
 check, so add new browse panels against that module rather than duplicating it
 (`source-coop-api.ts` re-exports it under its own names for compatibility).
 
+### `maplibre-gl-raster` — stretch and gamma curves
+
+`buildContinuousColormapRgba`
+(`packages/plugins/src/plugins/raster-symbology.ts`) mirrors the render
+pipeline's value adjustments **by hand**, inverted. Value-range opacity paints
+its alpha into the injected 256-wide colormap texture, so it has to map a
+texture column back to a data value — and the renderer samples that texture
+*after* rescale, the stretch curve and gamma. The mirror therefore unwinds
+gamma (`pow(x, 1 / max(gamma, 0.0001))`), then `sqrt` (`sqrt(x)`) or `log`
+(`log(1 + 99x) / log(1 + 99)`), in that order. None of it is exported: the
+curves live in the package's `pushAdjustments` / shader modules, and the
+strength constant (99) is a hard-coded prop. If upstream reorders the pipeline,
+changes a curve, or retunes the log strength, nothing fails to build — opacity
+thresholds just drift off the values the user typed, and only under a
+non-default stretch or gamma. On a bump, re-read that package's
+`pushAdjustments` (and its `inverseStretch` helper, which is the same pair of
+curves) and run `tests/raster-symbology.test.ts`.
+
 ### `maplibre-gl-raster` — checked by the compiler
 
 `GeoLibreCogRenderEngine` (`packages/plugins/src/types.ts`) mirrors the
