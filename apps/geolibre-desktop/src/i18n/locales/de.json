@@ -7515,6 +7515,7 @@
     "viewportStretchNoRange": "Die Werte der Ansicht ergeben keinen Wertebereich.",
     "viewportStretchMoved": "Die Karte wurde bewegt, bevor das Lesen abgeschlossen war. Wenden Sie sie erneut an.",
     "index": "Index",
+    "opacityClasses": "Deckkraftklassen",
     "classifyToggle": "In diskrete Klassen einteilen",
     "method": "Methode",
     "methodEqualInterval": "Gleiches Intervall",

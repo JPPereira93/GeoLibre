@@ -369,3 +369,51 @@ describe("defaultRasterSymbology", () => {
     assert.equal(symbology.breaks.at(-1), 10);
   });
 });
+
+describe("continuous opacity classes", () => {
+  it("keeps smooth colors while masking value ranges, including reversed colors", () => {
+    for (const reversed of [false, true]) {
+      const colors = ["#000000", "#ffffff"];
+      const baseline = buildContinuousColormapRgba(colors, reversed);
+      const rgba = buildContinuousColormapRgba(colors, reversed, {
+        breaks: [0, 25, 100],
+        classOpacities: [0, 0.5],
+      });
+      for (let column = 0; column < 256; column++) {
+        const offset = column * 4;
+        assert.deepEqual(rgba.slice(offset, offset + 3), baseline.slice(offset, offset + 3));
+        assert.equal(rgba[offset + 3], column / 255 < 0.25 ? 0 : 128);
+      }
+    }
+  });
+
+  it("keeps opacity thresholds in data values under stretch, gamma and changed rescale", () => {
+    for (const stretch of ["linear", "sqrt", "log"]) {
+      const rgba = buildContinuousColormapRgba(["#000000", "#ffffff"], false, {
+        breaks: [0, 25, 100],
+        classOpacities: [0, 1],
+        range: [0, 50],
+        stretch,
+        gamma: 2,
+      });
+      let threshold = 0.5;
+      if (stretch === "sqrt") threshold = Math.sqrt(threshold);
+      if (stretch === "log") threshold = Math.log1p(99 * threshold) / Math.log(100);
+      threshold = Math.sqrt(threshold);
+      assert.equal(rgba[Math.floor(threshold * 255) * 4 + 3], 0);
+      assert.equal(rgba[Math.ceil(threshold * 255) * 4 + 3], 255);
+    }
+  });
+
+  it("round-trips continuous opacity settings and rejects malformed opacity values", () => {
+    const base = {
+      ...defaultRasterSymbology(),
+      opacityClasses: true,
+      classOpacities: [0, 0.25, 0.5, 0.75, 1],
+    };
+    assert.deepEqual(savedRasterSymbology(layerWith(base)), base);
+    const invalid = savedRasterSymbology(layerWith({ ...base, classOpacities: [NaN] }));
+    assert.equal(invalid?.classOpacities, undefined);
+    assert.equal(invalid?.opacityClasses, true);
+  });
+});

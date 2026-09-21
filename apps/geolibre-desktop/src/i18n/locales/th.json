@@ -7434,6 +7434,7 @@
     "viewportStretchNoRange": "ค่าในมุมมองไม่สามารถกำหนดช่วงได้",
     "viewportStretchMoved": "แผนที่เลื่อนก่อนที่การอ่านจะเสร็จ โปรดใช้อีกครั้ง",
     "index": "ดัชนี",
+    "opacityClasses": "ชั้นความทึบแสง",
     "classifyToggle": "จัดเป็นชั้นข้อมูลแบบไม่ต่อเนื่อง",
     "method": "วิธีการ",
     "methodEqualInterval": "ช่วงเท่ากัน",

@@ -244,14 +244,22 @@ export function RasterSymbologySection({
   useEffect(() => {
     setStats(null);
     let cancelled = false;
-    if (!symbology?.classified || symbology.method === "manual") return;
+    if (!(symbology?.classified || symbology?.opacityClasses) || symbology.method === "manual")
+      return;
     void getRasterBandStats(layer.id, band, localBytesUrl).then((result) => {
       if (!cancelled && result) setStats(result);
     });
     return () => {
       cancelled = true;
     };
-  }, [layer.id, band, symbology?.classified, symbology?.method, localBytesUrl]);
+  }, [
+    layer.id,
+    band,
+    symbology?.classified,
+    symbology?.opacityClasses,
+    symbology?.method,
+    localBytesUrl,
+  ]);
 
   // Classification can be enabled before stats arrive (breaks fall back to the
   // [0, …, 1] default range), and switching bands while classified leaves the
@@ -262,12 +270,15 @@ export function RasterSymbologySection({
   useEffect(() => {
     if (!stats || stats === lastStatsRef.current) return;
     lastStatsRef.current = stats;
-    if (!symbology?.classified || symbology.method === "manual") return;
+    if (!(symbology?.classified || symbology?.opacityClasses) || symbology.method === "manual")
+      return;
     const isDefaultRange = symbology.breaks[0] === 0 && symbology.breaks.at(-1) === 1;
     const coversData =
       stats.min >= symbology.breaks[0] &&
       stats.max <= symbology.breaks[symbology.breaks.length - 1];
-    if (isDefaultRange || !coversData) recomputeSymbology({ ...symbology });
+    if (isDefaultRange || !coversData) {
+      recomputeSymbology({ ...symbology }, isDefaultRange ? { range: [stats.min, stats.max] } : {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stats]);
 
@@ -335,13 +346,23 @@ export function RasterSymbologySection({
 
   function recomputeSymbology(
     next: Pick<RasterSymbology, "ramp" | "method" | "classCount" | "customColors">,
-    overrides: { range?: [number, number]; manualBreaks?: number[] } = {},
+    overrides: {
+      range?: [number, number];
+      manualBreaks?: number[];
+      classified?: boolean;
+      opacityClasses?: boolean;
+    } = {},
   ): void {
     // Reusing the prior histogram here is safe: a range override only happens
     // for equal-interval (the Min/Max inputs are disabled for quantile), and
     // equal-interval breaks use only min/max — never the histogram.
-    const effectiveStats: RasterBandStats | null = overrides.range
-      ? { min: overrides.range[0], max: overrides.range[1], histogram: stats?.histogram ?? [] }
+    const range =
+      overrides.range ??
+      (!symbology?.classified && symbology?.opacityClasses && next.method === "equal-interval"
+        ? state.rescale?.[0]
+        : undefined);
+    const effectiveStats: RasterBandStats | null = range
+      ? { min: range[0], max: range[1], histogram: stats?.histogram ?? [] }
       : stats;
     // A manual symbology whose edges already match the requested class count
     // keeps them verbatim, even past the 12-class authoring cap:
@@ -375,7 +396,8 @@ export function RasterSymbologySection({
     commit({
       statePatch: { colormap: next.ramp, rescale: rangeFromBreaks(breaks) },
       symbology: {
-        classified: true,
+        classified: overrides.classified ?? symbology?.classified ?? false,
+        opacityClasses: overrides.opacityClasses ?? symbology?.opacityClasses,
         ramp: next.ramp,
         method: next.method,
         // Derived from the breaks actually computed, not the requested count:
@@ -564,21 +586,19 @@ export function RasterSymbologySection({
   const isCustom = (customColors?.length ?? 0) >= MIN_CUSTOM_COLORS;
   const rampSelectValue = isCustom ? CUSTOM_RAMP_VALUE : ramp;
 
-  // A custom ramp is the only thing the upstream control can't express for a
-  // continuous layer, so it carries a classified:false symbology record the
-  // render injection reads; otherwise no record is needed (the control renders
-  // the named colormap, reversal included). Breaks are required by the record
-  // but unused while continuous, so seed them from whatever range is known.
+  // Preserve opacity ranges when changing ramps or disabling discrete colors.
   function continuousSymbology(opts: {
     ramp: string;
     customColors?: string[];
   }): RasterSymbology | null {
     const custom =
       (opts.customColors?.length ?? 0) >= MIN_CUSTOM_COLORS ? opts.customColors : undefined;
-    if (!custom) return null;
-    const breaks = computeRasterBreaks(method, stats, classCount);
+    if (!custom && !symbology?.opacityClasses && !symbology?.classOpacities) return null;
+    const breaks = symbology?.breaks ?? computeRasterBreaks(method, stats, classCount);
     return {
       classified: false,
+      opacityClasses: symbology?.opacityClasses || !!symbology?.classOpacities,
+      classOpacities: symbology?.classOpacities,
       ramp: opts.ramp,
       method,
       // Derived from the computed breaks (which clamp to the authoring cap)
@@ -596,9 +616,9 @@ export function RasterSymbologySection({
     commit({ statePatch: { reversed: next } });
   }
 
-  /** Updates one classified value range without disturbing the other classes. */
+  /** Updates one opacity range without disturbing the other ranges. */
   function setClassOpacity(index: number, opacity: number): void {
-    if (!symbology?.classified) return;
+    if (!symbology) return;
     const values = Array.from(
       { length: symbology.classCount },
       (_, classIndex) => symbology.classOpacities?.[classIndex] ?? 1,
@@ -610,9 +630,9 @@ export function RasterSymbologySection({
     commit({ symbology: next });
   }
 
-  /** Promotes the displayed class colors to a custom ramp and edits one class. */
+  /** Edits a ramp anchor while preserving continuous/discrete mode and opacity. */
   function setClassColor(index: number, color: string): void {
-    if (!symbology?.classified) return;
+    if (!symbology) return;
     commit({
       symbology: {
         ...symbology,
@@ -645,7 +665,10 @@ export function RasterSymbologySection({
     } else {
       commit({
         statePatch: { colormap: value },
-        symbology: continuousSymbology({ ramp: value, customColors: undefined }),
+        symbology: continuousSymbology({
+          ramp: value,
+          customColors: undefined,
+        }),
       });
     }
   }
@@ -768,10 +791,9 @@ export function RasterSymbologySection({
           checked={classified}
           onChange={(event) => {
             if (event.target.checked) {
-              recomputeSymbology({ ramp, method, classCount, customColors });
+              recomputeSymbology({ ramp, method, classCount, customColors }, { classified: true });
             } else {
-              // Drop classification but keep a custom ramp (reverse lives on
-              // rasterState and is untouched here).
+              // Keep custom colors and opacity ranges in continuous mode.
               commit({
                 symbology: continuousSymbology({ ramp, customColors }),
               });
@@ -781,7 +803,37 @@ export function RasterSymbologySection({
         {t("rasterSymbology.classifyToggle")}
       </label>
 
-      {classified && symbology && (
+      {!classified && state.mode === "single" && (
+        <label className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={symbology?.opacityClasses ?? false}
+            onChange={(event) => {
+              if (event.target.checked) {
+                recomputeSymbology(
+                  { ramp, method, classCount, customColors },
+                  {
+                    classified: false,
+                    opacityClasses: true,
+                    range: state.rescale?.[0],
+                  },
+                );
+              } else if (symbology) {
+                commit({
+                  symbology: {
+                    ...symbology,
+                    opacityClasses: false,
+                    classOpacities: undefined,
+                  },
+                });
+              }
+            }}
+          />
+          {t("rasterSymbology.opacityClasses")}
+        </label>
+      )}
+
+      {(classified || symbology?.opacityClasses) && symbology && (
         <ClassificationControls
           symbology={symbology}
           stats={stats}
@@ -803,7 +855,7 @@ export function RasterSymbologySection({
         />
       )}
 
-      {!classified && (
+      {!classified && !symbology?.opacityClasses && (
         <RescaleControls
           rescale={state.rescale}
           onChange={(rescale) => commit({ statePatch: { rescale } })}

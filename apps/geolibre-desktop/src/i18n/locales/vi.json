@@ -7426,6 +7426,7 @@
     "viewportStretchNoRange": "Các giá trị trong khung nhìn không xác định được một khoảng.",
     "viewportStretchMoved": "Bản đồ đã di chuyển trước khi đọc xong. Hãy áp dụng lại.",
     "index": "chỉ mục",
+    "opacityClasses": "Các lớp độ mờ",
     "classifyToggle": "Phân loại thành các lớp riêng biệt",
     "method": "Phương pháp",
     "methodEqualInterval": "Khoảng bằng nhau",

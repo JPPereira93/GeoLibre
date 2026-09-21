@@ -7515,6 +7515,7 @@
     "viewportStretchNoRange": "Les valeurs de la vue ne définissent pas une plage.",
     "viewportStretchMoved": "La carte a été déplacée avant la fin de la lecture. Appliquez de nouveau.",
     "index": "Indice",
+    "opacityClasses": "Classes d’opacité",
     "classifyToggle": "Classer en classes discrètes",
     "method": "Méthode",
     "methodEqualInterval": "Intervalles égaux",

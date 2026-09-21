@@ -7434,6 +7434,7 @@
     "viewportStretchNoRange": "Nilai viewport tidak membentuk rentang.",
     "viewportStretchMoved": "Peta bergerak sebelum pembacaan selesai. Terapkan lagi.",
     "index": "Indeks",
+    "opacityClasses": "Kelas opasitas",
     "classifyToggle": "Klasifikasikan ke kelas diskret",
     "method": "Metode",
     "methodEqualInterval": "Interval sama",

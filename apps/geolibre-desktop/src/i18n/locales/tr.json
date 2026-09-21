@@ -7515,6 +7515,7 @@
     "viewportStretchNoRange": "Görünümdeki değerler bir aralık tanımlamıyor.",
     "viewportStretchMoved": "Okuma bitmeden harita hareket etti. Yeniden uygulayın.",
     "index": "İndeks",
+    "opacityClasses": "Opaklık sınıfları",
     "classifyToggle": "Ayrık sınıflara ayır",
     "method": "Yöntem",
     "methodEqualInterval": "Eşit aralık",

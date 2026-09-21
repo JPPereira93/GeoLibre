@@ -7515,6 +7515,7 @@
     "viewportStretchNoRange": "مقادیر نمای فعلی بازه‌ای تعریف نمی‌کنند.",
     "viewportStretchMoved": "نقشه پیش از پایان خواندن جابه‌جا شد. دوباره اعمال کنید.",
     "index": "شاخص",
+    "opacityClasses": "کلاس‌های کدری",
     "classifyToggle": "طبقه‌بندی به کلاس‌های گسسته",
     "method": "روش",
     "methodEqualInterval": "بازهٔ برابر",

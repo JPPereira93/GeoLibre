@@ -7515,6 +7515,7 @@
     "viewportStretchNoRange": "Os valores da vista não definem um intervalo.",
     "viewportStretchMoved": "O mapa se moveu antes de a leitura terminar. Aplique novamente.",
     "index": "Índice",
+    "opacityClasses": "Classes de opacidade",
     "classifyToggle": "Classificar em classes discretas",
     "method": "Método",
     "methodEqualInterval": "Intervalo igual",

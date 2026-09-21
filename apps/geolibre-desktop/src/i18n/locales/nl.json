@@ -7515,6 +7515,7 @@
     "viewportStretchNoRange": "De waarden in de weergave vormen geen bereik.",
     "viewportStretchMoved": "De kaart is verplaatst voordat het lezen klaar was. Pas opnieuw toe.",
     "index": "Index",
+    "opacityClasses": "Dekkingsklassen",
     "classifyToggle": "Indelen in discrete klassen",
     "method": "Methode",
     "methodEqualInterval": "Gelijk interval",

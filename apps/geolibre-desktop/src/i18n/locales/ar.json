@@ -7838,6 +7838,7 @@
     "viewportStretchNoRange": "قيم نطاق العرض لا تحدد مدى.",
     "viewportStretchMoved": "تحركت الخريطة قبل اكتمال القراءة. طبّق مرة أخرى.",
     "index": "المؤشر",
+    "opacityClasses": "فئات العتامة",
     "classifyToggle": "التصنيف إلى فئات منفصلة",
     "method": "الطريقة",
     "methodEqualInterval": "فترات متساوية",

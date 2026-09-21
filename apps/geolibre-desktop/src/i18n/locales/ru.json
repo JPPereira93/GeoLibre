@@ -7677,6 +7677,7 @@
     "viewportStretchNoRange": "Значения в области просмотра не образуют диапазон.",
     "viewportStretchMoved": "Карта была перемещена до завершения чтения. Примените ещё раз.",
     "index": "Индекс",
+    "opacityClasses": "Классы непрозрачности",
     "classifyToggle": "Разбить на дискретные классы",
     "method": "Метод",
     "methodEqualInterval": "Равные интервалы",

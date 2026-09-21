@@ -7434,6 +7434,7 @@
     "viewportStretchNoRange": "视口内的值无法确定范围。",
     "viewportStretchMoved": "读取完成前地图已移动。请再次应用。",
     "index": "指数",
+    "opacityClasses": "不透明度分级",
     "classifyToggle": "分为离散类别",
     "method": "方法",
     "methodEqualInterval": "等间隔",

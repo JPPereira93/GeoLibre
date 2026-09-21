@@ -7616,6 +7616,7 @@
     "viewportStretchNoRange": "The viewport values do not define a range.",
     "viewportStretchMoved": "The map moved before the read finished. Apply again.",
     "index": "Index",
+    "opacityClasses": "Opacity classes",
     "classifyToggle": "Classify into discrete classes",
     "method": "Method",
     "methodEqualInterval": "Equal interval",
