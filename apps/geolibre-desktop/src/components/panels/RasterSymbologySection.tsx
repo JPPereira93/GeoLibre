@@ -393,10 +393,17 @@ export function RasterSymbologySection({
       ),
       breaks.length - 1,
     );
+    const nextClassified = overrides.classified ?? symbology?.classified ?? false;
     commit({
-      statePatch: { colormap: next.ramp, rescale: rangeFromBreaks(breaks) },
+      // Discrete colors use the class extent as their renderer rescale. For a
+      // continuous ramp, breaks describe opacity only and must not replace the
+      // user's current display stretch.
+      statePatch: {
+        colormap: next.ramp,
+        ...(nextClassified ? { rescale: rangeFromBreaks(breaks) } : {}),
+      },
       symbology: {
-        classified: overrides.classified ?? symbology?.classified ?? false,
+        classified: nextClassified,
         opacityClasses: overrides.opacityClasses ?? symbology?.opacityClasses,
         ramp: next.ramp,
         method: next.method,
@@ -815,7 +822,10 @@ export function RasterSymbologySection({
                   {
                     classified: false,
                     opacityClasses: true,
-                    range: state.rescale?.[0],
+                    // A histogram's bins describe the full statistics range,
+                    // so only equal intervals may use the display-range
+                    // override. Quantiles must retain the histogram bounds.
+                    range: method === "equal-interval" ? state.rescale?.[0] : undefined,
                   },
                 );
               } else if (symbology) {
@@ -844,7 +854,9 @@ export function RasterSymbologySection({
             // breaks, which would silently collapse the classification UI.
             const sorted = [...breaks].sort((a, b) => a - b);
             commit({
-              statePatch: { rescale: rangeFromBreaks(sorted) },
+              // Manual opacity breaks on a continuous ramp do not alter its
+              // renderer stretch; discrete classification still uses them.
+              statePatch: classified ? { rescale: rangeFromBreaks(sorted) } : undefined,
               symbology: { ...symbology, breaks: sorted },
             });
           }}
