@@ -56,7 +56,11 @@ describe("ProcessingMenuSearch", () => {
       events,
     );
 
-    fireEvent.change(input, { target: { value: "buffer" } });
+    assert.equal(input.getAttribute("aria-expanded"), "false");
+    assert.equal(input.getAttribute("aria-controls"), null);
+    fireEvent.change(input, { target: { value: "  buffer  " } });
+    assert.equal(input.getAttribute("aria-expanded"), "true");
+    assert.equal(input.getAttribute("aria-controls"), "processing-menu-search-results");
     assert.deepEqual(
       screen.getAllByRole("option").map((option) => option.textContent),
       ["BufferProcessing", "Buffer RasterWhitebox"],
@@ -91,5 +95,18 @@ describe("ProcessingMenuSearch", () => {
     );
     fireEvent.keyDown(input, { key: "Escape" });
     assert.deepEqual(events, ["dismiss"]);
+  });
+
+  it("announces when matching results are capped", () => {
+    const input = renderSearch(
+      Array.from({ length: 101 }, (_, index) =>
+        command(`proc.tool-${index}`, `Tool ${index}`, "Processing", () => {}),
+      ),
+      [],
+    );
+
+    fireEvent.change(input, { target: { value: "tool" } });
+    assert.equal(screen.getAllByRole("option").length, 100);
+    assert.equal(screen.getByRole("status").textContent, "Showing the first 100 matching tools");
   });
 });

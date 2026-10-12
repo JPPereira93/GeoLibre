@@ -277,13 +277,6 @@ export function TopToolbar({
     open: dialogs.commandPaletteOpen || processingMenuOpen,
     openNetworkTool: consent.openNetworkTool,
   });
-  const processingCommands = useMemo(
-    () =>
-      [...paletteCommands.commands, ...paletteCommands.toolCommands].filter((command) =>
-        command.id.startsWith("proc."),
-      ),
-    [paletteCommands.commands, paletteCommands.toolCommands],
-  );
 
   const toolbarButtonSize = compact ? "icon" : "sm";
   const toolbarButtonClass = compact ? "h-8 w-8 shrink-0" : "shrink-0";
@@ -439,7 +432,7 @@ export function TopToolbar({
         deploymentCapabilities.has("processing:run") && (
           <ProcessingMenu
             chrome={chrome}
-            commands={processingCommands}
+            commands={paletteCommands.processingCommands}
             earthEnginePanel={panels.earthEngine}
             open={processingMenuOpen}
             onOpenChange={setProcessingMenuOpen}

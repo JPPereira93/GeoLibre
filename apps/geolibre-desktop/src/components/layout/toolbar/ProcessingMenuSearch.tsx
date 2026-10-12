@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { filterCommands, type Command } from "../../../lib/commands";
 
+const MAX_SEARCH_RESULTS = 100;
+
 interface ProcessingMenuSearchProps {
   commands: Command[];
   open: boolean;
@@ -26,10 +28,13 @@ export function ProcessingMenuSearch({
   const [activeResult, setActiveResult] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const trimmedQuery = query.trim();
-  const searchResults = useMemo(
-    () => (trimmedQuery ? filterCommands(commands, query).slice(0, 100) : []),
-    [commands, query, trimmedQuery],
-  );
+  const { searchResults, resultsTruncated } = useMemo(() => {
+    const matches = trimmedQuery ? filterCommands(commands, trimmedQuery) : [];
+    return {
+      searchResults: matches.slice(0, MAX_SEARCH_RESULTS),
+      resultsTruncated: matches.length > MAX_SEARCH_RESULTS,
+    };
+  }, [commands, trimmedQuery]);
 
   useEffect(() => {
     setActiveResult((index) =>
@@ -51,8 +56,8 @@ export function ProcessingMenuSearch({
           ref={searchRef}
           role="combobox"
           aria-label={t("processing.menuSearch.searchLabel")}
-          aria-expanded={true}
-          aria-controls="processing-menu-search-results"
+          aria-expanded={Boolean(trimmedQuery)}
+          aria-controls={trimmedQuery ? "processing-menu-search-results" : undefined}
           aria-activedescendant={
             searchResults[activeResult]
               ? `processing-menu-search-result-${activeResult}`
@@ -92,36 +97,45 @@ export function ProcessingMenuSearch({
         />
       </div>
       {trimmedQuery && (
-        <div
-          id="processing-menu-search-results"
-          role="listbox"
-          aria-label={t("processing.menuSearch.resultsLabel")}
-          className="max-h-[min(60vh,24rem)] overflow-y-auto"
-        >
-          {searchResults.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-              {t("processing.menuSearch.noMatches")}
+        <>
+          <div
+            id="processing-menu-search-results"
+            role="listbox"
+            aria-label={t("processing.menuSearch.resultsLabel")}
+            className="max-h-[min(60vh,24rem)] overflow-y-auto"
+          >
+            {searchResults.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                {t("processing.menuSearch.noMatches")}
+              </p>
+            ) : (
+              searchResults.map((command, index) => (
+                <DropdownMenuItem
+                  key={command.id}
+                  id={`processing-menu-search-result-${index}`}
+                  role="option"
+                  aria-selected={index === activeResult}
+                  className={cn(index === activeResult && "bg-accent text-accent-foreground")}
+                  onPointerMove={(event) => {
+                    event.preventDefault();
+                    setActiveResult(index);
+                  }}
+                  onSelect={() => onRun(command)}
+                >
+                  <span className="min-w-0 flex-1 truncate">{command.title}</span>
+                  <span className="ms-3 shrink-0 text-xs text-muted-foreground">
+                    {command.group}
+                  </span>
+                </DropdownMenuItem>
+              ))
+            )}
+          </div>
+          {resultsTruncated ? (
+            <p role="status" className="px-3 py-1.5 text-xs text-muted-foreground">
+              {t("processing.menuSearch.resultsTruncated", { count: MAX_SEARCH_RESULTS })}
             </p>
-          ) : (
-            searchResults.map((command, index) => (
-              <DropdownMenuItem
-                key={command.id}
-                id={`processing-menu-search-result-${index}`}
-                role="option"
-                aria-selected={index === activeResult}
-                className={cn(index === activeResult && "bg-accent text-accent-foreground")}
-                onPointerMove={(event) => {
-                  event.preventDefault();
-                  setActiveResult(index);
-                }}
-                onSelect={() => onRun(command)}
-              >
-                <span className="min-w-0 flex-1 truncate">{command.title}</span>
-                <span className="ms-3 shrink-0 text-xs text-muted-foreground">{command.group}</span>
-              </DropdownMenuItem>
-            ))
-          )}
-        </div>
+          ) : null}
+        </>
       )}
     </>
   );
