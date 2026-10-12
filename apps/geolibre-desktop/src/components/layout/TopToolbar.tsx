@@ -18,7 +18,7 @@ import {
 } from "@geolibre/plugins";
 import { Button, cn, Input } from "@geolibre/ui";
 import { Map, Moon, Sun } from "lucide-react";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useConsentGatedActions } from "../../hooks/useConsentGatedActions";
 import type { CollaborationApi } from "../../hooks/useCollaboration";
@@ -268,13 +268,22 @@ export function TopToolbar({
     addDataReady,
     ...dialogs,
   });
+  const [processingMenuOpen, setProcessingMenuOpen] = useState(false);
   // The palette lists what the menus would show under the active UI profile and
-  // platform, plus one entry per processing tool (loaded on first open).
+  // platform, plus one entry per processing tool (loaded when either searchable
+  // surface first opens).
   const paletteCommands = usePaletteCommands({
     commands: allowedCommands,
-    open: dialogs.commandPaletteOpen,
+    open: dialogs.commandPaletteOpen || processingMenuOpen,
     openNetworkTool: consent.openNetworkTool,
   });
+  const processingCommands = useMemo(
+    () =>
+      [...paletteCommands.commands, ...paletteCommands.toolCommands].filter((command) =>
+        command.id.startsWith("proc."),
+      ),
+    [paletteCommands.commands, paletteCommands.toolCommands],
+  );
 
   const toolbarButtonSize = compact ? "icon" : "sm";
   const toolbarButtonClass = compact ? "h-8 w-8 shrink-0" : "shrink-0";
@@ -430,7 +439,10 @@ export function TopToolbar({
         deploymentCapabilities.has("processing:run") && (
           <ProcessingMenu
             chrome={chrome}
+            commands={processingCommands}
             earthEnginePanel={panels.earthEngine}
+            open={processingMenuOpen}
+            onOpenChange={setProcessingMenuOpen}
             onOpenNetworkTool={consent.openNetworkTool}
             onOpenPlanetaryComputer={handleOpenPlanetaryComputer}
             onOpenGeoreferencer={() => dialogs.setGeoreferencerOpen(true)}

@@ -2,6 +2,7 @@ import { type NetworkToolKind, useAppCapability, useAppStore } from "@geolibre/c
 import { isEarthEngineAvailable } from "@geolibre/plugins";
 import {
   Button,
+  cn,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -12,8 +13,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@geolibre/ui";
-import { Wrench } from "lucide-react";
-import { useMemo } from "react";
+import { Search, Wrench } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isMobile } from "../../../lib/is-mobile";
 import type { ToolbarPanel } from "../../../hooks/useToolbarPanels";
@@ -29,6 +30,7 @@ import { CapabilityNotice, capabilityNoticeId, useCapabilityReason } from "./Cap
 import type { ToolbarChrome } from "./constants";
 import { useMapCapabilities } from "../../../hooks/useMapCapabilities";
 import { PluginMenuContributions } from "./PluginMenuContributions";
+import { filterCommands, type Command } from "../../../lib/commands";
 
 // aria-describedby targets for the "your role does not allow this" explanations.
 // One per privilege rather than one per item: several denied entries share a
@@ -53,7 +55,10 @@ export const EARTH_ENGINE_AVAILABLE = isEarthEngineAvailable();
 
 interface ProcessingMenuProps {
   chrome: ToolbarChrome;
+  commands: Command[];
   earthEnginePanel: ToolbarPanel;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onOpenNetworkTool: (kind: NetworkToolKind) => void;
   onOpenPlanetaryComputer: () => void;
   onOpenGeoreferencer: () => void;
@@ -62,12 +67,18 @@ interface ProcessingMenuProps {
 /** The Processing menu: assistant, toolboxes, conversion/vector/network/statistics/raster submenus. */
 export function ProcessingMenu({
   chrome,
+  commands,
   earthEnginePanel,
+  open,
+  onOpenChange,
   onOpenNetworkTool,
   onOpenPlanetaryComputer,
   onOpenGeoreferencer,
 }: ProcessingMenuProps) {
   const { t } = useTranslation();
+  const [query, setQuery] = useState("");
+  const [activeResult, setActiveResult] = useState(0);
+  const searchRef = useRef<HTMLInputElement>(null);
   const setProcessingOpen = useAppStore((s) => s.setProcessingOpen);
   const setProcessingInitialTool = useAppStore((s) => s.setProcessingInitialTool);
   const setConversionOpen = useAppStore((s) => s.setConversionOpen);
@@ -172,8 +183,39 @@ export function ProcessingMenu({
     show("processing.planetaryComputer") ||
     showEarthEngine;
 
+  const trimmedQuery = query.trim();
+  const searchResults = useMemo(
+    () => (trimmedQuery ? filterCommands(commands, query).slice(0, 100) : []),
+    [commands, query, trimmedQuery],
+  );
+
+  useEffect(() => {
+    setActiveResult((index) =>
+      searchResults.length === 0 ? 0 : Math.min(index, searchResults.length - 1),
+    );
+  }, [searchResults.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => searchRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setQuery("");
+      setActiveResult(0);
+    }
+    onOpenChange(nextOpen);
+  };
+
+  const runSearchResult = (command: Command) => {
+    command.run();
+    handleOpenChange(false);
+  };
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           className={chrome.buttonClass}
@@ -185,10 +227,86 @@ export function ProcessingMenu({
           {chrome.renderLabel(t("toolbar.menu.processing"))}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="start" className="min-w-[min(24rem,calc(100vw-1rem))]">
         <DropdownMenuLabel>{t("toolbar.menu.processing")}</DropdownMenuLabel>
+        <div className="flex items-center gap-2 px-2 pb-1">
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
+            ref={searchRef}
+            role="combobox"
+            aria-label={t("processing.menuSearch.searchLabel")}
+            aria-expanded={true}
+            aria-controls="processing-menu-search-results"
+            aria-activedescendant={
+              searchResults[activeResult]
+                ? `processing-menu-search-result-${activeResult}`
+                : undefined
+            }
+            className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            placeholder={t("processing.menuSearch.searchPlaceholder")}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setActiveResult(0);
+            }}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setActiveResult((index) =>
+                  searchResults.length === 0 ? 0 : (index + 1) % searchResults.length,
+                );
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveResult((index) =>
+                  searchResults.length === 0
+                    ? 0
+                    : (index - 1 + searchResults.length) % searchResults.length,
+                );
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                const command = searchResults[activeResult];
+                if (command) runSearchResult(command);
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                handleOpenChange(false);
+              }
+            }}
+          />
+        </div>
         <DropdownMenuSeparator />
-        {show("processing.assistant") && (
+        {trimmedQuery && (
+          <div
+            id="processing-menu-search-results"
+            role="listbox"
+            aria-label={t("processing.menuSearch.resultsLabel")}
+            className="max-h-[min(60vh,24rem)] overflow-y-auto"
+          >
+            {searchResults.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                {t("processing.menuSearch.noMatches")}
+              </p>
+            ) : (
+              searchResults.map((command, index) => (
+                <DropdownMenuItem
+                  key={command.id}
+                  id={`processing-menu-search-result-${index}`}
+                  role="option"
+                  aria-selected={index === activeResult}
+                  className={cn(index === activeResult && "bg-accent text-accent-foreground")}
+                  onPointerMove={() => setActiveResult(index)}
+                  onSelect={() => runSearchResult(command)}
+                >
+                  <span className="min-w-0 flex-1 truncate">{command.title}</span>
+                  <span className="ms-3 shrink-0 text-xs text-muted-foreground">
+                    {command.group}
+                  </span>
+                </DropdownMenuItem>
+              ))
+            )}
+          </div>
+        )}
+        {!trimmedQuery && show("processing.assistant") && (
           <>
             <DropdownMenuItem
               onSelect={() => setAssistantOpen(true)}
@@ -208,7 +326,7 @@ export function ProcessingMenu({
             than repeating the bare product name, and says what clicking it
             does; pairs with the GeoLibre Toolbox trigger below. Reuses the
             dialog's own heading string, already translated in every locale. */}
-        {showWhitebox && (
+        {!trimmedQuery && showWhitebox && (
           <DropdownMenuItem
             onSelect={() => setProcessingOpen(true)}
             disabled={processingDenied}
@@ -221,7 +339,8 @@ export function ProcessingMenu({
             Whitebox toolbox dialog preselected to that tool. Catalog data lives
             in lib/whitebox-menu-catalog.ts; gated with the Whitebox item, which
             runs in the browser via WebAssembly (so available on mobile too). */}
-        {showWhitebox &&
+        {!trimmedQuery &&
+          showWhitebox &&
           WHITEBOX_MENU_CATALOG.map((cat) => (
             <DropdownMenuSub key={cat.key}>
               <DropdownMenuSubTrigger disabled={processingDenied} title={processingDeniedTitle}>
@@ -262,7 +381,7 @@ export function ProcessingMenu({
           ))}
         {/* Divide the toolbox block from GeoLibre's own tools, so the two
             sections read as separate owners rather than one flat list. */}
-        {showWhitebox && showGeolibre && <DropdownMenuSeparator />}
+        {!trimmedQuery && showWhitebox && showGeolibre && <DropdownMenuSeparator />}
         {/* GeoLibre's own tools (Turf vector, rasterio raster, format
             conversion, routing, spatial statistics) plus geocoding, batch &
             models, and AI segmentation. Grouped under a single "GeoLibre
@@ -271,7 +390,7 @@ export function ProcessingMenu({
             the way its "Whitebox Toolbox" sibling does instead of standing as
             the bare product name (GeoLibre#1904). Each child keeps its own
             visibility gate; the parent shows when any child does. */}
-        {showGeolibre && (
+        {!trimmedQuery && showGeolibre && (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger disabled={processingDenied} title={processingDeniedTitle}>
               {t("toolbar.item.geolibre")}
@@ -733,7 +852,9 @@ export function ProcessingMenu({
         )}
         {/* Divide the tool-category submenus (Whitebox, GeoLibre) from the
             workspaces and consoles below. Only when both sides are present. */}
-        {(showWhitebox || showGeolibre) && showWorkspacesOrServices && <DropdownMenuSeparator />}
+        {!trimmedQuery && (showWhitebox || showGeolibre) && showWorkspacesOrServices && (
+          <DropdownMenuSeparator />
+        )}
         {/* The workspaces run tools too — Model Builder composes them, and the
             SQL/Python/notebook consoles execute arbitrary analysis over the
             loaded data — so they carry the same `processing:run` gate as the
@@ -746,7 +867,7 @@ export function ProcessingMenu({
             toolbox (Whitebox raster and GeoLibre vector alike), so filing it
             under one of them would misdescribe its reach. It heads the
             workspaces block with its SQL/Python/notebook/dashboard siblings. */}
-        {show("processing.modelBuilder") && (
+        {!trimmedQuery && show("processing.modelBuilder") && (
           <DropdownMenuItem
             onSelect={() => setModelBuilderOpen(true)}
             disabled={processingDenied}
@@ -759,7 +880,7 @@ export function ProcessingMenu({
             and classification tools, so it carries the same gate as Model
             Builder. It runs on the WASM tool runner and the store, so it needs
             neither the sidecar nor a 2D map. */}
-        {show("processing.obiaWorkbench") && (
+        {!trimmedQuery && show("processing.obiaWorkbench") && (
           <DropdownMenuItem
             onSelect={openObiaWorkbench}
             disabled={processingDenied}
@@ -768,7 +889,7 @@ export function ProcessingMenu({
             {t("toolbar.item.obiaWorkbench")}
           </DropdownMenuItem>
         )}
-        {show("processing.sqlWorkspace") && (
+        {!trimmedQuery && show("processing.sqlWorkspace") && (
           <DropdownMenuItem
             onSelect={() => setSqlWorkspaceOpen(true)}
             disabled={processingDenied}
@@ -777,7 +898,7 @@ export function ProcessingMenu({
             {t("toolbar.command.sqlWorkspace")}
           </DropdownMenuItem>
         )}
-        {show("processing.pythonConsole") && (
+        {!trimmedQuery && show("processing.pythonConsole") && (
           <DropdownMenuItem
             onSelect={() => setPythonConsoleOpen(true)}
             disabled={processingDenied}
@@ -786,7 +907,7 @@ export function ProcessingMenu({
             {t("toolbar.command.pythonConsole")}
           </DropdownMenuItem>
         )}
-        {show("processing.notebook") && (
+        {!trimmedQuery && show("processing.notebook") && (
           <DropdownMenuItem
             onSelect={() => setNotebookOpen(true)}
             disabled={processingDenied}
@@ -795,17 +916,17 @@ export function ProcessingMenu({
             {t("toolbar.command.notebook")}
           </DropdownMenuItem>
         )}
-        {show("processing.dashboard") && (
+        {!trimmedQuery && show("processing.dashboard") && (
           <DropdownMenuItem onSelect={() => setDashboardOpen(true)}>
             {t("toolbar.command.dashboard")}
           </DropdownMenuItem>
         )}
-        {show("processing.history") && (
+        {!trimmedQuery && show("processing.history") && (
           <DropdownMenuItem onSelect={() => setProcessingHistoryOpen(true)}>
             {t("toolbar.item.processingHistory")}
           </DropdownMenuItem>
         )}
-        {show("processing.planetaryComputer") && (
+        {!trimmedQuery && show("processing.planetaryComputer") && (
           <DropdownMenuItem
             onSelect={onOpenPlanetaryComputer}
             disabled={!addRemoteCap.granted}
@@ -814,7 +935,7 @@ export function ProcessingMenu({
             {t("toolbar.command.planetaryComputer")}
           </DropdownMenuItem>
         )}
-        {showEarthEngine && (
+        {!trimmedQuery && showEarthEngine && (
           <DropdownMenuItem
             onSelect={earthEnginePanel.toggle}
             disabled={!addRemoteCap.granted}
@@ -824,14 +945,14 @@ export function ProcessingMenu({
             {earthEnginePanel.visible ? " ✓" : ""}
           </DropdownMenuItem>
         )}
-        {(show("processing.planetaryComputer") || showEarthEngine) && (
+        {!trimmedQuery && (show("processing.planetaryComputer") || showEarthEngine) && (
           <CapabilityNotice id={ADD_REMOTE_DENIED_ID} capability={addRemoteCap} />
         )}
-        <PluginMenuContributions target="processing" />
+        {!trimmedQuery && <PluginMenuContributions target="processing" />}
         {/* One reason line for the whole menu, at its foot: the entries
             `processing:run` disables are spread across the toolbox block and
             the workspaces block, and each points here with aria-describedby. */}
-        <CapabilityNotice id={PROCESSING_DENIED_ID} capability={processingCap} />
+        {!trimmedQuery && <CapabilityNotice id={PROCESSING_DENIED_ID} capability={processingCap} />}
       </DropdownMenuContent>
     </DropdownMenu>
   );
