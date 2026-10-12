@@ -80,6 +80,7 @@ export function ProcessingMenuSearch({
                   : (index - 1 + searchResults.length) % searchResults.length,
               );
             } else if (event.key === "Enter") {
+              if (event.nativeEvent.isComposing) return;
               event.preventDefault();
               const command = searchResults[activeResult];
               if (command) onRun(command);
@@ -109,7 +110,10 @@ export function ProcessingMenuSearch({
                 role="option"
                 aria-selected={index === activeResult}
                 className={cn(index === activeResult && "bg-accent text-accent-foreground")}
-                onPointerMove={() => setActiveResult(index)}
+                onPointerMove={(event) => {
+                  event.preventDefault();
+                  setActiveResult(index);
+                }}
                 onSelect={() => onRun(command)}
               >
                 <span className="min-w-0 flex-1 truncate">{command.title}</span>

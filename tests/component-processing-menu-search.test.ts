@@ -62,8 +62,17 @@ describe("ProcessingMenuSearch", () => {
       ["BufferProcessing", "Buffer RasterWhitebox"],
     );
 
+    input.focus();
     fireEvent.keyDown(input, { key: "ArrowDown" });
-    assert.equal(screen.getAllByRole("option")[1].getAttribute("aria-selected"), "true");
+    const options = screen.getAllByRole("option");
+    assert.equal(options[1].getAttribute("aria-selected"), "true");
+    assert.equal(fireEvent.pointerMove(options[0], { pointerType: "mouse" }), false);
+    assert.equal(options[0].getAttribute("aria-selected"), "true");
+    assert.equal(document.activeElement, input);
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    assert.deepEqual(events, []);
     fireEvent.keyDown(input, { key: "Enter" });
     assert.deepEqual(events, ["proc.buffer-raster", "ran-raster"]);
   });
