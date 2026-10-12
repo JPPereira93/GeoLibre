@@ -27,6 +27,7 @@ export function ProcessingMenuSearch({
   const { t } = useTranslation();
   const [activeResult, setActiveResult] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
   const trimmedQuery = query.trim();
   const { searchResults, resultsTruncated } = useMemo(() => {
     const matches = trimmedQuery ? filterCommands(commands, trimmedQuery) : [];
@@ -41,6 +42,13 @@ export function ProcessingMenuSearch({
       searchResults.length === 0 ? 0 : Math.min(index, searchResults.length - 1),
     );
   }, [searchResults.length]);
+
+  useEffect(() => {
+    const activeOption = resultsRef.current?.querySelector<HTMLElement>(
+      '[role="option"][aria-selected="true"]',
+    );
+    activeOption?.scrollIntoView?.({ block: "nearest" });
+  }, [activeResult, searchResults]);
 
   useEffect(() => {
     if (!open) return;
@@ -99,6 +107,7 @@ export function ProcessingMenuSearch({
       {trimmedQuery && (
         <>
           <div
+            ref={resultsRef}
             id="processing-menu-search-results"
             role="listbox"
             aria-label={t("processing.menuSearch.resultsLabel")}

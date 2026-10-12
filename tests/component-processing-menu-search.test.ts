@@ -67,8 +67,15 @@ describe("ProcessingMenuSearch", () => {
     );
 
     input.focus();
+    let scrolledIntoView = false;
+    Object.defineProperty(screen.getAllByRole("option")[1], "scrollIntoView", {
+      value: (options: ScrollIntoViewOptions) => {
+        scrolledIntoView = options.block === "nearest";
+      },
+    });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     const options = screen.getAllByRole("option");
+    assert.equal(scrolledIntoView, true);
     assert.equal(options[1].getAttribute("aria-selected"), "true");
     assert.equal(fireEvent.pointerMove(options[0], { pointerType: "mouse" }), false);
     assert.equal(options[0].getAttribute("aria-selected"), "true");
