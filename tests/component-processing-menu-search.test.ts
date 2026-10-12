@@ -1,0 +1,86 @@
+import { fireEvent, render, screen } from "./helpers/dom";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { createElement, useState } from "react";
+import type { Command } from "../apps/geolibre-desktop/src/lib/commands";
+
+const { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } = await import("@geolibre/ui");
+const { ProcessingMenuSearch } =
+  await import("../apps/geolibre-desktop/src/components/layout/toolbar/ProcessingMenuSearch");
+
+function command(id: string, title: string, group: string, run: () => void): Command {
+  return { id, title, group, run };
+}
+
+function renderSearch(commands: Command[], events: string[]) {
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    const [query, setQuery] = useState("");
+    return createElement(
+      DropdownMenu,
+      { open, onOpenChange: setOpen },
+      createElement(DropdownMenuTrigger, null, "Processing"),
+      createElement(
+        DropdownMenuContent,
+        null,
+        createElement(ProcessingMenuSearch, {
+          commands,
+          open,
+          query,
+          onQueryChange: setQuery,
+          onRun: (item) => {
+            events.push(item.id);
+            item.run();
+          },
+          onDismiss: () => {
+            events.push("dismiss");
+            setOpen(false);
+          },
+        }),
+      ),
+    );
+  }
+  render(createElement(Harness));
+  return screen.getByRole("combobox", { name: "Search processing tools" });
+}
+
+describe("ProcessingMenuSearch", () => {
+  it("filters commands and runs the keyboard-selected result", () => {
+    const events: string[] = [];
+    const input = renderSearch(
+      [
+        command("proc.buffer", "Buffer", "Processing", () => events.push("ran-buffer")),
+        command("proc.buffer-raster", "Buffer Raster", "Whitebox", () => events.push("ran-raster")),
+        command("proc.clip", "Clip", "Processing", () => events.push("ran-clip")),
+      ],
+      events,
+    );
+
+    fireEvent.change(input, { target: { value: "buffer" } });
+    assert.deepEqual(
+      screen.getAllByRole("option").map((option) => option.textContent),
+      ["BufferProcessing", "Buffer RasterWhitebox"],
+    );
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    assert.equal(screen.getAllByRole("option")[1].getAttribute("aria-selected"), "true");
+    fireEvent.keyDown(input, { key: "Enter" });
+    assert.deepEqual(events, ["proc.buffer-raster", "ran-raster"]);
+  });
+
+  it("shows an empty state and dismisses on Escape", () => {
+    const events: string[] = [];
+    const input = renderSearch(
+      [command("proc.buffer", "Buffer", "Processing", () => events.push("ran"))],
+      events,
+    );
+
+    fireEvent.change(input, { target: { value: "missing" } });
+    assert.equal(
+      screen.getByText("No matching processing tools").textContent,
+      "No matching processing tools",
+    );
+    fireEvent.keyDown(input, { key: "Escape" });
+    assert.deepEqual(events, ["dismiss"]);
+  });
+});

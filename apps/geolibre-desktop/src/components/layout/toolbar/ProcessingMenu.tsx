@@ -2,7 +2,6 @@ import { type NetworkToolKind, useAppCapability, useAppStore } from "@geolibre/c
 import { isEarthEngineAvailable } from "@geolibre/plugins";
 import {
   Button,
-  cn,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -13,8 +12,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@geolibre/ui";
-import { Search, Wrench } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Wrench } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isMobile } from "../../../lib/is-mobile";
 import type { ToolbarPanel } from "../../../hooks/useToolbarPanels";
@@ -30,7 +29,8 @@ import { CapabilityNotice, capabilityNoticeId, useCapabilityReason } from "./Cap
 import type { ToolbarChrome } from "./constants";
 import { useMapCapabilities } from "../../../hooks/useMapCapabilities";
 import { PluginMenuContributions } from "./PluginMenuContributions";
-import { filterCommands, type Command } from "../../../lib/commands";
+import type { Command } from "../../../lib/commands";
+import { ProcessingMenuSearch } from "./ProcessingMenuSearch";
 
 // aria-describedby targets for the "your role does not allow this" explanations.
 // One per privilege rather than one per item: several denied entries share a
@@ -77,8 +77,6 @@ export function ProcessingMenu({
 }: ProcessingMenuProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
-  const [activeResult, setActiveResult] = useState(0);
-  const searchRef = useRef<HTMLInputElement>(null);
   const setProcessingOpen = useAppStore((s) => s.setProcessingOpen);
   const setProcessingInitialTool = useAppStore((s) => s.setProcessingInitialTool);
   const setConversionOpen = useAppStore((s) => s.setConversionOpen);
@@ -184,27 +182,10 @@ export function ProcessingMenu({
     showEarthEngine;
 
   const trimmedQuery = query.trim();
-  const searchResults = useMemo(
-    () => (trimmedQuery ? filterCommands(commands, query).slice(0, 100) : []),
-    [commands, query, trimmedQuery],
-  );
-
-  useEffect(() => {
-    setActiveResult((index) =>
-      searchResults.length === 0 ? 0 : Math.min(index, searchResults.length - 1),
-    );
-  }, [searchResults.length]);
-
-  useEffect(() => {
-    if (!open) return;
-    const frame = requestAnimationFrame(() => searchRef.current?.focus());
-    return () => cancelAnimationFrame(frame);
-  }, [open]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       setQuery("");
-      setActiveResult(0);
     }
     onOpenChange(nextOpen);
   };
@@ -229,83 +210,15 @@ export function ProcessingMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-[min(24rem,calc(100vw-1rem))]">
         <DropdownMenuLabel>{t("toolbar.menu.processing")}</DropdownMenuLabel>
-        <div className="flex items-center gap-2 px-2 pb-1">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <input
-            ref={searchRef}
-            role="combobox"
-            aria-label={t("processing.menuSearch.searchLabel")}
-            aria-expanded={true}
-            aria-controls="processing-menu-search-results"
-            aria-activedescendant={
-              searchResults[activeResult]
-                ? `processing-menu-search-result-${activeResult}`
-                : undefined
-            }
-            className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            placeholder={t("processing.menuSearch.searchPlaceholder")}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setActiveResult(0);
-            }}
-            onKeyDown={(event) => {
-              event.stopPropagation();
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                setActiveResult((index) =>
-                  searchResults.length === 0 ? 0 : (index + 1) % searchResults.length,
-                );
-              } else if (event.key === "ArrowUp") {
-                event.preventDefault();
-                setActiveResult((index) =>
-                  searchResults.length === 0
-                    ? 0
-                    : (index - 1 + searchResults.length) % searchResults.length,
-                );
-              } else if (event.key === "Enter") {
-                event.preventDefault();
-                const command = searchResults[activeResult];
-                if (command) runSearchResult(command);
-              } else if (event.key === "Escape") {
-                event.preventDefault();
-                handleOpenChange(false);
-              }
-            }}
-          />
-        </div>
+        <ProcessingMenuSearch
+          commands={commands}
+          open={open}
+          query={query}
+          onQueryChange={setQuery}
+          onRun={runSearchResult}
+          onDismiss={() => handleOpenChange(false)}
+        />
         <DropdownMenuSeparator />
-        {trimmedQuery && (
-          <div
-            id="processing-menu-search-results"
-            role="listbox"
-            aria-label={t("processing.menuSearch.resultsLabel")}
-            className="max-h-[min(60vh,24rem)] overflow-y-auto"
-          >
-            {searchResults.length === 0 ? (
-              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                {t("processing.menuSearch.noMatches")}
-              </p>
-            ) : (
-              searchResults.map((command, index) => (
-                <DropdownMenuItem
-                  key={command.id}
-                  id={`processing-menu-search-result-${index}`}
-                  role="option"
-                  aria-selected={index === activeResult}
-                  className={cn(index === activeResult && "bg-accent text-accent-foreground")}
-                  onPointerMove={() => setActiveResult(index)}
-                  onSelect={() => runSearchResult(command)}
-                >
-                  <span className="min-w-0 flex-1 truncate">{command.title}</span>
-                  <span className="ms-3 shrink-0 text-xs text-muted-foreground">
-                    {command.group}
-                  </span>
-                </DropdownMenuItem>
-              ))
-            )}
-          </div>
-        )}
         {!trimmedQuery && show("processing.assistant") && (
           <>
             <DropdownMenuItem
