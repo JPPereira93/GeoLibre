@@ -208,7 +208,7 @@ export function ProcessingMenu({
           {chrome.renderLabel(t("toolbar.menu.processing"))}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-[min(24rem,calc(100vw-1rem))]">
+      <DropdownMenuContent align="start">
         <DropdownMenuLabel>{t("toolbar.menu.processing")}</DropdownMenuLabel>
         <ProcessingMenuSearch
           commands={commands}
